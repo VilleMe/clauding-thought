@@ -1,0 +1,5 @@
+{
+  "name": "clauding-thought",
+  "description": "AI code governance framework. Analyzes codebases and generates project-specific .claude/ governance directories with rules, patterns, security checks, and agent skills.",
+  "version": "1.0.0"
+}

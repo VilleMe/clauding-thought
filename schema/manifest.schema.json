@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clauding-thought.dev/manifest.schema.json",
+  "title": "Clauding Thought Manifest",
+  "description": "Project DNA — describes the stack, architecture, conventions, and boundaries of a codebase so that AI agents can generate code that fits.",
+  "type": "object",
+  "required": ["version", "stack", "architecture", "conventions"],
+  "$comment": "Canonical copy. Also bundled in skills/init/ for direct reference."
+}

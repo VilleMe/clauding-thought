@@ -1,0 +1,14 @@
+{
+  "name": "local-dev",
+  "owner": {
+    "name": "vmeri"
+  },
+  "plugins": [
+    {
+      "name": "clauding-thought",
+      "source": ".",
+      "description": "AI code governance framework",
+      "version": "1.0.0"
+    }
+  ]
+}
