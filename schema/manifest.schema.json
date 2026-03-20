@@ -5,5 +5,34 @@
   "description": "Project DNA — describes the stack, architecture, conventions, and boundaries of a codebase so that AI agents can generate code that fits.",
   "type": "object",
   "required": ["version", "stack", "architecture", "conventions"],
-  "$comment": "Canonical copy. Also bundled in skills/init/ for direct reference."
+  "$comment": "Canonical copy. Also bundled in skills/init/ for direct reference.",
+  "properties": {
+    "governance": {
+      "type": "object",
+      "description": "Governance layer metadata and configuration.",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Semantic version of the governance layer."
+        },
+        "initialized": {
+          "type": "string",
+          "description": "ISO date when the governance layer was first generated."
+        },
+        "last_evolved": {
+          "type": ["string", "null"],
+          "description": "ISO date of the last /evolve run, or null."
+        },
+        "changelog": {
+          "type": "string",
+          "description": "Path to the governance changelog file."
+        },
+        "auto_accept": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, .claude/settings.json is generated with all tools auto-accepted. Governance hooks (secret-filter, destructive-guard) remain active as the safety layer."
+        }
+      }
+    }
+  }
 }

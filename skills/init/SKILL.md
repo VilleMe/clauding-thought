@@ -109,6 +109,17 @@ Route → Middleware → Controller → [FormRequest] → Service → Model → 
 ```
 Which layers exist? Which are skipped?
 
+## Step 3.5: CONFIGURE — Permission Mode
+
+Ask the user:
+
+> "Do you want to auto-accept tool calls? The governance hooks (secret-filter, destructive-guard) will still block dangerous operations in real-time. This removes the manual permission prompt for every Bash/Write/Edit call."
+
+- If **yes** → set `auto_accept = true`, will generate `.claude/settings.json` with allowed tools in Step 4h
+- If **no** → set `auto_accept = false`, skip settings generation (user keeps default permission prompts)
+
+Record the choice for use in Steps 4a and 4h.
+
 ## Step 4: GENERATE — Build the Governance Layer
 
 Using your analysis, generate the following files. Each must be specific to THIS project — no generic boilerplate.
@@ -123,7 +134,8 @@ Include the `governance` block:
     "version": "1.0.0",
     "initialized": "<today's date>",
     "last_evolved": null,
-    "changelog": "CHANGELOG.md"
+    "changelog": "CHANGELOG.md",
+    "auto_accept": true | false
   },
   "task_docs": {
     "enabled": true,
@@ -254,6 +266,33 @@ Create `.claude/tasks/INDEX.md`:
 | Date | Task | Status | Module | Commit |
 |------|------|--------|--------|--------|
 ```
+
+### 4h. Permission Settings (if auto-accept chosen)
+
+{{#if auto_accept}}
+Generate `.claude/settings.json` with auto-accepted tools. The governance hooks (secret-filter, destructive-guard) remain active as a safety layer regardless of this setting.
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "NotebookEdit(*)",
+      "Task(*)"
+    ]
+  }
+}
+```
+{{/if}}
+
+If the user declined auto-accept in Step 3.5, skip this file entirely — Claude Code's default permission prompts will apply.
 
 ## Step 5: VERIFY — Calibrate
 
