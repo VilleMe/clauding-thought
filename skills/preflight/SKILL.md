@@ -40,7 +40,7 @@ Determine which archetypes this task involves. A single task may span multiple:
 ### Step 2: Load Relevant Context
 
 For each archetype identified, load:
-1. The **pattern file** from `.claude/patterns/{archetype}.md`
+1. The **pattern file** from `.claude/patterns/{archetype}.md` — if no pattern file exists for this archetype (e.g., `translation`, `service`, `validation`, `policy`), skip the pattern and rely on sibling files and rule sections instead. Not all archetypes have dedicated pattern files.
 2. The **relevant sections** from rule files (not the entire file)
 3. **Sibling files** — find 1-2 existing files most similar to what will be created
 
@@ -93,25 +93,25 @@ PREFLIGHT_BRIEF:
     - [ ] <another specific check>
 ```
 
-## Step 5: Create Task Document (if applicable)
+### Step 5: Recommend Task Document (if applicable)
 
-Check `manifest.task_docs` to decide whether to create a task document:
+Check `manifest.task_docs` to decide whether a task document is needed:
 
 1. If `task_docs.enabled` is `false`, skip this step.
-2. If the task will modify >= `auto_create_threshold.min_files` files, create a doc.
-3. If ANY archetype matches `auto_create_threshold.always_for`, create a doc.
+2. If the task will modify >= `auto_create_threshold.min_files` files, recommend a doc.
+3. If ANY archetype matches `auto_create_threshold.always_for`, recommend a doc.
 4. Otherwise, skip.
 
-When creating a task document:
-1. Create `.claude/tasks/YYYY-MM-DD-<slug>.md` with OPEN status
-2. Write the task intent and the PREFLIGHT_BRIEF into it
-3. Update `.claude/tasks/INDEX.md` with the new entry (status: `open`)
-4. Include the task document path in the PREFLIGHT_BRIEF output so other agents know where it is
+When a task document is recommended, add to the PREFLIGHT_BRIEF output:
 
-Add to the PREFLIGHT_BRIEF output:
 ```
-  task_doc: ".claude/tasks/YYYY-MM-DD-<slug>.md"
+  task_doc_recommended: true
+  task_doc_reason: "<why — e.g. '4 files estimated' or 'security-sensitive change'>"
 ```
+
+Then tell the user: **"Run `/task-doc <task description>` to create the task document before starting."**
+
+Do NOT create files yourself — the preflight skill is read-only. The `/task-doc` skill handles file creation.
 
 ## Principles
 

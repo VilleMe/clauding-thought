@@ -10,9 +10,10 @@ rules, patterns, security checks, and agent skills.
 
 - `skills/` -- Each subdirectory is a skill with SKILL.md as entrypoint and optional supporting files
 - `hooks/hooks.json` -- Hook definitions for security enforcement and workflow automation
-- `scripts/` -- Hook implementation scripts (bash)
+- `scripts/` -- Hook implementation scripts (Python 3)
 - `rules/` -- Rule file templates with `{{placeholder}}` syntax (hydrated by /init)
 - `patterns/` -- Pattern file templates with `{{placeholder}}` syntax (hydrated by /init)
+- `packs/` -- Community rule packs with reusable security/convention rules
 - `schema/` -- JSON Schema for manifest.json (canonical copy)
 - `.claude-plugin/plugin.json` -- Plugin manifest
 
@@ -25,7 +26,8 @@ rules, patterns, security checks, and agent skills.
 - Template loops use `{{#each}}` / `{{/each}}`
 - The manifest schema is the contract -- skills and templates must stay in sync with it
 - All schema changes must be backwards-compatible (add fields, don't remove)
-- Hook scripts exit 0 with JSON `{"decision":"block","reason":"..."}` to deny, exit 0 with empty stdout to allow, exit 2 with stderr feedback
+- Hook scripts exit 0 with JSON `{"decision":"block","reason":"..."}` on stdout to deny, exit 0 with empty stdout to allow, exit 2 with stderr feedback for non-blocking messages
+- SKILL.md files end with `$ARGUMENTS` — this is replaced by the Claude Agent SDK with the user's invocation arguments at runtime
 
 ## Key Principles
 

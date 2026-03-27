@@ -21,12 +21,12 @@ Every significant task gets its own document in `.claude/tasks/`. This creates:
 A task document moves through phases:
 
 ```
-OPEN --> PREFLIGHT --> IN_PROGRESS --> REVIEW --> CLOSED
-                           |              |
-                           +---- fix <----+
+open --> in_progress --> review --> closed
+              |             |
+              +---- fix <---+
 ```
 
-### Phase 1: OPEN (created by /preflight or manually)
+### Phase 1: OPEN (created by /task-doc or manually)
 
 When a task starts, create `.claude/tasks/YYYY-MM-DD-<slug>.md` with:
 
@@ -59,6 +59,13 @@ As code is written, append to the document:
 - <Decision>: <Chosen approach> -- <Why>
 - <Decision>: <Chosen approach> -- <Why>
 
+### Suppressions
+
+| Rule ID | Reason | Approved By |
+|---------|--------|-------------|
+| AUTH-001 | Legacy endpoint — auth migration tracked in JIRA-123 | @username |
+| TENANCY-003 | Lookup table, not tenant-scoped by design | @username |
+
 ### Files Changed
 
 | File | Action | Description |
@@ -70,6 +77,8 @@ As code is written, append to the document:
 
 <Anything notable during implementation — gotchas, workarounds, things to revisit>
 ```
+
+**Suppressions** allow a task to bypass specific QC rules when there is a documented, approved reason. The `/qc` skill reads the Suppressions table and skips findings that match a listed Rule ID. Suppressions are scoped to this task only — they do not change global rules.
 
 ### Phase 3: REVIEW (updated by /qc)
 
@@ -149,7 +158,7 @@ Do NOT create task documents for:
 ## Integration with Other Skills
 
 ### Preflight --> Task Doc
-The preflight skill creates the task document in OPEN status and writes the preflight brief into it.
+The preflight skill recommends creating a task document (when thresholds are met) and tells the user to run `/task-doc`. Preflight itself is read-only — it does not create files.
 
 ### Generation --> Task Doc
 During code generation, the main agent appends decisions and file changes.

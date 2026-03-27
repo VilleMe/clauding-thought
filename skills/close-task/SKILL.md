@@ -16,6 +16,15 @@ Find the active task document in `.claude/tasks/` (status: `open`, `in_progress`
 
 If no active task exists, report that and exit.
 
+### Step 1.5: Check QC Verdict
+
+Read the task document and look for the most recent `## QC Review` section.
+
+- If the last QC verdict is **BLOCK**, **refuse to close the task**. Report:
+  > "Cannot close: last QC verdict was BLOCK. Run `/qc` after fixing the issues, or add suppressions to the task document if the findings are approved exceptions."
+- If the last QC verdict is **WARN**, close is allowed but include a note in the closure section listing the open warnings.
+- If there is no QC review section at all, warn the user: "No QC review found. Consider running `/qc` before closing." Then proceed if the user confirms.
+
 ### Step 2: Gather Closure Data
 
 Run `git log -1 --oneline` to get the latest commit hash and message.
@@ -44,9 +53,11 @@ If `$ARGUMENTS` contains lesson text, use that directly instead of asking.
 
 ### Step 5: Promote to Memory
 
-If `manifest.task_docs.promote_lessons` is `true`:
+Check `manifest.task_docs.promote_lessons` — if the `task_docs` key is absent from the manifest, default to `true` (per schema defaults).
 
-1. Read the current `.claude/memory/MEMORY.md`
+If `promote_lessons` is `true`:
+
+1. Read the current `.claude/memory/MEMORY.md`. If the file doesn't exist, create it with a header: `# Project Memory\n\nLessons learned from tasks.\n`
 2. Append the lessons learned with a date and source task reference
 3. Keep MEMORY.md under 200 lines (only the first 200 are auto-loaded by Claude Code)
 4. If approaching 200 lines, create or append to topic files:

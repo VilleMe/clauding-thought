@@ -26,7 +26,7 @@ The current version lives in `manifest.json` under a `governance` field:
     "version": "1.2.0",
     "initialized": "2026-03-17",
     "last_evolved": "2026-03-25",
-    "changelog": ".claude/CHANGELOG.md"
+    "changelog": "CHANGELOG.md"
   }
 }
 ```
@@ -79,7 +79,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Architecture rules: module boundaries, layer enforcement
 - Convention rules: naming, validation, translations
 - Pattern files: controller, model, test, migration, component
-- Agent skills: preflight, qc, evolve
+- Agent skills: preflight, qc, evolve, task-doc, close-task
 ```
 
 ## When to Update

@@ -37,6 +37,9 @@ Your Codebase --> /init --> .claude/ governance layer
                              │   ├── test.md         (how tests look here)
                              │   ├── migration.md    (how migrations look here)
                              │   └── component.md    (how frontend components look)
+                             ├── memory/
+                             │   ├── MEMORY.md       (lessons learned)
+                             │   └── decisions.md    (governance decision log)
                              └── tasks/
                                  ├── INDEX.md        (task registry)
                                  └── *.md            (per-task documents)
@@ -55,9 +58,10 @@ git clone <repo-url> clauding-thought
 /init
 
 # 4. Work on a task
-/preflight "Add user authentication"   # gather context, create task doc
+/preflight "Add user authentication"   # gather context, identify risks
+/task-doc "Add user authentication"    # create task document (if recommended)
 # ... write code ...
-/qc                                     # review changes, update task doc
+/qc                                     # review changes against rules
 /close-task                             # finalize, capture lessons
 
 # 5. Periodically update the governance layer
@@ -84,7 +88,7 @@ During development, skills work before, during, and after code generation:
 - Classifies the task (model? controller? frontend?)
 - Loads only the relevant rules and patterns
 - Finds sibling files as references
-- Creates a task document if the change is significant
+- Recommends a task document if the change is significant
 - Returns a focused context brief
 
 **Task Doc** tracks the work as it happens:
@@ -135,7 +139,17 @@ Clauding Thought includes 5 hooks that enforce governance in real-time, borrowed
 
 ```jsonc
 {
-  "version": "1.0",
+  "version": "1.1",
+  "governance": {
+    "version": "1.0.0",
+    "initialized": "2026-03-17",
+    "last_evolved": null,
+    "changelog": "CHANGELOG.md",
+    "auto_accept": true,
+    "packs": [
+      { "name": "owasp-top-10", "version": "1.0.0", "applied": "2026-03-17", "customized": false }
+    ]
+  },
   "stack": {
     "language": "php",
     "framework": "laravel",
@@ -165,6 +179,12 @@ Clauding Thought includes 5 hooks that enforce governance in real-time, borrowed
       { "name": "isms", "path": "app/Models/Isms" }
     ]
   },
+  "security": {
+    "posture": "strict",
+    "checks": [
+      { "id": "AUTH-001", "name": "Authorization required", "severity": "error" }
+    ]
+  },
   "conventions": {
     "validation_style": "form-request-array",
     "translation": {
@@ -178,6 +198,15 @@ Clauding Thought includes 5 hooks that enforce governance in real-time, borrowed
       "itsm": ["core"],
       "isms": ["core"]
     }
+  },
+  "rule_defaults": {
+    "security_severity": "error",
+    "architecture_severity": "warning",
+    "convention_severity": "warning"
+  },
+  "task_docs": {
+    "enabled": true,
+    "directory": "tasks"
   }
 }
 ```
@@ -226,12 +255,15 @@ clauding-thought/
 │   ├── qc/                  # Post-coding: review against rules
 │   ├── evolve/              # Periodic: update governance for drift
 │   ├── task-doc/            # Track: create/update task documents
-│   └── close-task/          # Finalize: close task, promote lessons
+│   ├── close-task/          # Finalize: close task, promote lessons
+│   ├── export/              # Export: rules to Cursor/Copilot/Windsurf
+│   └── report/              # Report: governance health metrics
 ├── hooks/
 │   └── hooks.json           # Hook definitions
-├── scripts/                 # Hook implementation scripts
+├── scripts/                 # Hook implementation scripts (Python 3)
 ├── rules/                   # Rule file templates
 ├── patterns/                # Pattern file templates
+├── packs/                   # Community rule packs (e.g., owasp-top-10)
 ├── schema/                  # Manifest JSON Schema
 ├── CLAUDE.md                # Project rules for clauding-thought itself
 └── README.md

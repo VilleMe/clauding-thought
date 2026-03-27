@@ -1,5 +1,44 @@
 {
   "name": "clauding-thought",
   "description": "AI code governance framework. Analyzes codebases and generates project-specific .claude/ governance directories with rules, patterns, security checks, and agent skills.",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "commands": [
+    {
+      "name": "init",
+      "description": "Bootstrap governance layer. Analyzes the codebase and generates manifest, rules, patterns, skills, and changelog."
+    },
+    {
+      "name": "preflight",
+      "description": "Gathers context before coding. Classifies the task, loads relevant rules and patterns, finds sibling files, identifies risks."
+    },
+    {
+      "name": "qc",
+      "description": "Quality control review. Evaluates uncommitted changes against manifest-driven security, architecture, and convention rules."
+    },
+    {
+      "name": "evolve",
+      "description": "Re-analyzes the codebase and updates the governance layer. Detects drift, suggests rule changes, bumps version."
+    },
+    {
+      "name": "task-doc",
+      "description": "Creates or updates a task document for the current work. Tracks decisions, files changed, QC verdicts."
+    },
+    {
+      "name": "close-task",
+      "description": "Finalizes the active task document. Records commit reference, captures lessons learned, promotes learnings to memory."
+    },
+    {
+      "name": "export",
+      "description": "Exports governance rules to other AI coding tools (Cursor, Copilot, Windsurf)."
+    },
+    {
+      "name": "report",
+      "description": "Governance health report. Analyzes task history, QC verdicts, and governance evolution."
+    }
+  ],
+  "hooks": {
+    "PreToolUse": ["Write", "Edit", "Bash"],
+    "Stop": true,
+    "UserPromptSubmit": true
+  }
 }

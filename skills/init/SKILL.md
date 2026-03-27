@@ -18,6 +18,8 @@ You read the project, understand its architecture, and generate:
 5. Pattern files (canonical examples of how code looks here)
 6. Rule files (security, architecture, conventions)
 7. `tasks/INDEX.md` — empty task index ready for use
+8. `memory/MEMORY.md` — stub memory file for lessons learned
+9. `memory/decisions.md` — governance decision log
 
 ## Step 1: DETECT — Identify the Stack
 
@@ -78,6 +80,7 @@ For each file archetype, read 3-5 representative files and extract the common sh
 3. The import patterns
 4. The authorization/validation approach
 5. One canonical example (the cleanest, most representative file)
+6. The directory glob pattern where this archetype lives (e.g., `app/Http/Controllers/**`, `app/Models/**`, `database/migrations/**`). These become the `paths:` scope for rule files and `<!-- scope: -->` annotations.
 
 ## Step 3: ANALYZE — Understand Architecture
 
@@ -115,10 +118,27 @@ Ask the user:
 
 > "Do you want to auto-accept tool calls? The governance hooks (secret-filter, destructive-guard) will still block dangerous operations in real-time. This removes the manual permission prompt for every Bash/Write/Edit call."
 
-- If **yes** → set `auto_accept = true`, will generate `.claude/settings.json` with allowed tools in Step 4h
+- If **yes** → set `auto_accept = true`, will generate `.claude/settings.json` with allowed tools in Step 4i
 - If **no** → set `auto_accept = false`, skip settings generation (user keeps default permission prompts)
 
-Record the choice for use in Steps 4a and 4h.
+Record the choice for use in Steps 4a and 4i.
+
+## Step 3.7: DISCOVER — Rule Packs
+
+Scan the plugin's `packs/` directory (at `${CLAUDE_PLUGIN_ROOT}/packs/`):
+1. Read each `packs/*/pack.json`
+2. Filter by `stack_filter`: A pack matches if `stack_filter` is absent/empty (universal pack), or ALL non-empty filter arrays match — `stack_filter.language` (if non-empty) must contain the detected `stack.language`, AND `stack_filter.framework` (if non-empty) must contain the detected `stack.framework`. An empty array means "no constraint" for that dimension.
+3. Present matching packs to the user:
+
+   > "These community rule packs match your stack:
+   > - **owasp-top-10** v1.0.0 — OWASP Top 10 security rules for web applications
+   > - (other matching packs)
+   >
+   > Apply all / select specific / skip?"
+
+4. Record the user's selection for Steps 4a and 4e.
+
+If no packs match or the `packs/` directory doesn't exist, skip silently.
 
 ## Step 4: GENERATE — Build the Governance Layer
 
@@ -126,6 +146,8 @@ Using your analysis, generate the following files. Each must be specific to THIS
 
 ### 4a. `manifest.json`
 Fill in every field you can confidently determine. Use `null` for fields you cannot determine. Follow the schema at `${CLAUDE_SKILL_DIR}/manifest.schema.json`.
+
+Set `version` to `"1.1"` (the current schema version supporting path-scoped rules and severity levels).
 
 Include the `governance` block:
 ```json
@@ -135,7 +157,10 @@ Include the `governance` block:
     "initialized": "<today's date>",
     "last_evolved": null,
     "changelog": "CHANGELOG.md",
-    "auto_accept": true | false
+    "auto_accept": true | false,
+    "packs": [
+      { "name": "<pack-name>", "version": "<version>", "applied": "<today>", "customized": false }
+    ]
   },
   "task_docs": {
     "enabled": true,
@@ -148,6 +173,17 @@ Include the `governance` block:
   }
 }
 ```
+
+Populate `governance.packs` with the packs selected in Step 3.7 (empty array `[]` if none selected).
+
+When generating `security.checks`, include a `paths` array on each check based on what it targets:
+- Auth bypass checks → controller and route directory globs from Step 2
+- Tenant isolation checks → model and validation/form-request directory globs
+- Data exposure checks → controller and resource/serializer directory globs
+- Injection checks → all backend code paths (broad scope, or omit `paths` for all files)
+- Secrets checks → omit `paths` (applies to all files)
+
+Use the unified severity vocabulary: `error` for active vulnerability checks, `warning` for potential risk checks, `info` for informational/hygiene checks. Do NOT use the legacy `block`/`warn` values.
 
 ### 4b. `CLAUDE.md`
 Generate a project rules document structured as:
@@ -164,6 +200,8 @@ Generate a project rules document structured as:
 ### 4c. Agent Skills
 
 Generate these skills in the target project's `.claude/skills/` directory. Each skill is a directory containing a `SKILL.md` with YAML frontmatter and full agent logic.
+
+**Note:** These are project-level skills that live inside the generated `.claude/` directory. The plugin also provides additional plugin-level skills (`/export`, `/report`) that are available through the Clauding Thought plugin itself and do NOT need to be generated here.
 
 **`.claude/skills/preflight/SKILL.md`** — generates a context brief before code generation. Must reference the manifest to load the right rules and patterns. Include frontmatter:
 ```yaml
@@ -227,9 +265,27 @@ For each archetype sampled in Step 2, generate a pattern file showing:
 
 ### 4e. Rule Files
 
+Generate rule files by hydrating the templates from `${CLAUDE_PLUGIN_ROOT}/rules/`:
+
 **`rules/security.md`** — derived from manifest.security + tenancy + auth analysis
 **`rules/architecture.md`** — derived from manifest.boundaries + layers
 **`rules/conventions.md`** — derived from manifest.conventions + sampled patterns
+
+When hydrating templates, populate:
+- `paths:` YAML frontmatter with the directory globs detected in Step 2 for each rule category
+- `default_severity:` in frontmatter: `error` for security, `warning` for architecture, `warning` for conventions
+- `<!-- scope: -->` inline annotations using the archetype-specific globs from Step 2 (e.g., `<!-- scope: app/Http/Controllers/** -->` on the Authentication section)
+- `<!-- severity: -->` inline annotations on sections that deviate from the file-level default (e.g., Migration Safety gets `error` even though architecture defaults to `warning`)
+
+**Pack rule merging:** For each pack selected in Step 3.7, read the pack's rule files and append them to the target rule file as clearly-delimited sections:
+```markdown
+<!-- pack:<pack-name>:<section-id>:start -->
+## Section Title
+[pack rule content]
+<!-- pack:<pack-name>:<section-id>:end -->
+```
+
+Also append any `security_checks` from the pack's `pack.json` to the manifest's `security.checks` array.
 
 ### 4f. Changelog
 
@@ -267,32 +323,59 @@ Create `.claude/tasks/INDEX.md`:
 |------|------|--------|--------|--------|
 ```
 
-### 4h. Permission Settings (if auto-accept chosen)
+### 4h. Memory Directory
 
-{{#if auto_accept}}
-Generate `.claude/settings.json` with auto-accepted tools. The governance hooks (secret-filter, destructive-guard) remain active as a safety layer regardless of this setting.
+Create `.claude/memory/MEMORY.md`:
+
+```markdown
+# Project Memory
+
+Lessons learned and decisions from tasks are recorded here.
+Lines after 200 will be truncated from auto-loading, so keep this file concise.
+Use topic files (e.g., `security-lessons.md`, `architecture-decisions.md`) for detailed notes.
+```
+
+Create `.claude/memory/decisions.md`:
+
+```markdown
+# Governance Decisions
+
+Timestamped log of changes to the governance layer, maintained by `/evolve`.
+
+| Date | Decision | Reason | Source |
+|------|----------|--------|--------|
+```
+
+### 4i. Permission Settings (if auto-accept chosen)
+
+If the user chose auto-accept in Step 3.5, generate `.claude/settings.json` with the following content. Read-only tools (Read, Glob, Grep) are already auto-approved by Claude Code and do not need to be listed.
 
 ```json
 {
   "permissions": {
     "allow": [
-      "Bash(*)",
-      "Read(*)",
-      "Write(*)",
-      "Edit(*)",
-      "Glob(*)",
-      "Grep(*)",
-      "WebFetch(*)",
-      "WebSearch(*)",
-      "NotebookEdit(*)",
-      "Task(*)"
+      "Bash",
+      "Edit",
+      "Write",
+      "WebFetch",
+      "WebSearch",
+      "NotebookEdit"
     ]
   }
 }
 ```
-{{/if}}
 
-If the user declined auto-accept in Step 3.5, skip this file entirely — Claude Code's default permission prompts will apply.
+The governance hooks (secret-filter, destructive-guard) run as PreToolUse hooks — they fire **before** permission rules are evaluated and can block any dangerous operation regardless of the allow list. This is the safety layer that makes auto-accept viable.
+
+If the user declined auto-accept in Step 3.5, do not generate this file — Claude Code's default permission prompts will apply.
+
+### 4j. File Storage Detection
+
+If the project has filesystem/storage configuration (e.g., `config/filesystems.php`, S3 config in environment, `MEDIA_ROOT` in Django settings), populate `architecture.file_storage` in the manifest:
+- `disk`: the default storage disk (e.g., `"private"`, `"public"`, `"s3"`)
+- `auth_required`: whether file downloads require authentication
+
+If no filesystem configuration is detected, omit the `file_storage` field.
 
 ## Step 5: VERIFY — Calibrate
 
