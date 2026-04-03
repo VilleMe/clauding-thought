@@ -17,4 +17,4 @@ Data stored here is deliberately anonymized:
 
 ## Location
 
-This directory lives at `${CLAUDE_PLUGIN_ROOT}/insights/` — it is plugin-scoped, not project-scoped.
+Since v2.0.0, this directory is mirrored to `~/.claude/clauding-thought/insights/` (user-scoped) by the SessionStart hook. Project-local skills read/write from the user-scoped copy.

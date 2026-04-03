@@ -35,7 +35,7 @@ Parse the argument:
 
 If the argument includes `--insights`, also include cross-project analysis:
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/insights/findings.jsonl`
+1. Read `~/.claude/clauding-thought/insights/findings.jsonl`
 2. If the file does not exist or is empty, add a note: "No cross-project findings available. Run `/insights --synthesize` or close tasks with `/close-task` to generate findings."
 3. If data exists, add a `cross_project_insights:` section to the report output:
 
@@ -52,7 +52,7 @@ If the argument includes `--insights`, also include cross-project analysis:
         count: <N>
         stacks: ["php/laravel", "typescript/nextjs"]
     hook_candidates_identified: <N>
-    patterns_file: "${CLAUDE_PLUGIN_ROOT}/insights/patterns.md"
+    patterns_file: "~/.claude/clauding-thought/insights/patterns.md"
     last_synthesized: "<date from patterns.md header, or 'never'>"
 ```
 

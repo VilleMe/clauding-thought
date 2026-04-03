@@ -1,25 +1,47 @@
 ---
 name: init
 description: "Bootstrap governance layer. Analyzes the codebase and generates manifest.json, CLAUDE.md, rules, patterns, skills, and changelog. Run this first on any new project."
-argument-hint: "[optional: specific focus area]"
+argument-hint: "[--update | optional: specific focus area]"
 user-invocable: true
 allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 
 You are the Clauding Thought bootstrap agent. Your job is to analyze a codebase and generate a complete `.claude/` governance layer for it.
 
-## What You Do
+## Modes
+
+### Full Init (default)
+Analyzes the codebase from scratch and generates the complete `.claude/` governance layer.
+
+### Update Mode (`--update`)
+Refreshes boilerplate components without re-analyzing the codebase. Use after updating the Clauding Thought plugin to get the latest skills, hooks, and scripts.
+
+When called with `--update`:
+1. Verify `.claude/manifest.json` exists (governance must be initialized first)
+2. Overwrite "boilerplate" skills that are not project-customized: `export`, `report`, `insights`, `critique`
+3. Overwrite `.claude/skills/evolve/changelog-spec.md` with the latest version
+4. Overwrite all hook scripts in `.claude/scripts/` with the latest versions from `${CLAUDE_PLUGIN_ROOT}/scripts/`
+5. Merge hooks into `.claude/settings.json` (preserve existing permissions and other settings)
+6. Update `governance.plugin_version` in manifest.json to the current plugin version
+7. Add a `[Unreleased]` changelog entry noting the plugin update
+8. Report what was updated
+
+Do NOT update in `--update` mode: preflight, qc, evolve, task-doc, close-task (these are project-customized). Do NOT re-analyze the codebase or modify rules/patterns/manifest fields (other than `plugin_version`).
+
+## What Full Init Does
 
 You read the project, understand its architecture, and generate:
 1. `manifest.json` — the project's DNA (including governance versioning)
 2. `CLAUDE.md` — master rules document
 3. `CHANGELOG.md` — initial version entry for the governance layer
-4. Agent skills (preflight, qc, evolve, task-doc, close-task)
+4. All 10 agent skills (preflight, qc, evolve, task-doc, close-task, export, report, insights, critique)
 5. Pattern files (canonical examples of how code looks here)
 6. Rule files (security, architecture, conventions)
 7. `tasks/INDEX.md` — empty task index ready for use
 8. `memory/MEMORY.md` — stub memory file for lessons learned
 9. `memory/decisions.md` — governance decision log
+10. `scripts/` — governance hook scripts (secret-filter, destructive-guard, etc.)
+11. `settings.json` — permissions and hook configuration
 
 ## Step 1: DETECT — Identify the Stack
 
@@ -118,10 +140,10 @@ Ask the user:
 
 > "Do you want to auto-accept tool calls? The governance hooks (secret-filter, destructive-guard) will still block dangerous operations in real-time. This removes the manual permission prompt for every Bash/Write/Edit call."
 
-- If **yes** → set `auto_accept = true`, will generate `.claude/settings.json` with allowed tools in Step 4i
-- If **no** → set `auto_accept = false`, skip settings generation (user keeps default permission prompts)
+- If **yes** → set `auto_accept = true`, will generate `.claude/settings.json` with permissions and hooks in Step 4i
+- If **no** → set `auto_accept = false`, will generate `.claude/settings.json` with hooks only (no permission overrides)
 
-Record the choice for use in Steps 4a and 4i.
+Record the choice for use in Steps 4a and 4i. Note: `.claude/settings.json` is always generated because it contains the hook definitions.
 
 ## Step 3.7: DISCOVER — Rule Packs
 
@@ -144,7 +166,7 @@ If no packs match or the `packs/` directory doesn't exist, skip silently.
 
 Check whether the plugin has accumulated cross-project intelligence that can improve this project's initial governance.
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/insights/patterns.md` and `${CLAUDE_PLUGIN_ROOT}/insights/hook-candidates.md`
+1. Read `~/.claude/clauding-thought/insights/patterns.md` and `~/.claude/clauding-thought/insights/hook-candidates.md`
    - If neither file exists or both are empty, skip this step silently. This is expected for first-time installations or fresh plugin installs.
 
 2. If data exists, extract recommendations relevant to the detected stack from Step 1:
@@ -175,7 +197,7 @@ Check whether the plugin has accumulated cross-project intelligence that can imp
    These can be reviewed and customized via `/evolve`.
    ```
 
-If `${CLAUDE_PLUGIN_ROOT}` is not available (plugin root not set), skip this step silently.
+If `~/.claude/clauding-thought/insights/` does not exist, skip this step silently.
 
 ## Step 4: GENERATE — Build the Governance Layer
 
@@ -195,6 +217,7 @@ Include the `governance` block:
     "last_evolved": null,
     "changelog": "CHANGELOG.md",
     "auto_accept": true | false,
+    "plugin_version": "<version from plugin.json>",
     "packs": [
       { "name": "<pack-name>", "version": "<version>", "applied": "<today>", "customized": false }
     ]
@@ -237,9 +260,9 @@ Generate a project rules document structured as:
 
 ### 4c. Agent Skills
 
-Generate these skills in the target project's `.claude/skills/` directory. Each skill is a directory containing a `SKILL.md` with YAML frontmatter and full agent logic.
+Generate ALL 10 skills in the target project's `.claude/skills/` directory. Each skill is a directory containing a `SKILL.md` with YAML frontmatter and full agent logic. After init, all skills are project-local and available in VS Code autocomplete — no plugin dependency for daily use.
 
-**Note:** These are project-level skills that live inside the generated `.claude/` directory. The plugin also provides additional plugin-level skills (`/export`, `/report`) that are available through the Clauding Thought plugin itself and do NOT need to be generated here.
+**Project-customized skills** — These are generated with project-specific content based on the codebase analysis. They should NOT be overwritten by `--update`:
 
 **`.claude/skills/preflight/SKILL.md`** — generates a context brief before code generation. Must reference the manifest to load the right rules and patterns. Include frontmatter:
 ```yaml
@@ -294,6 +317,18 @@ allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 ```
 
+**Boilerplate skills** — These are copied verbatim from the plugin source at `${CLAUDE_PLUGIN_ROOT}/skills/`. They are NOT project-customized and CAN be overwritten by `--update`:
+
+**`.claude/skills/export/SKILL.md`** — Copy from `${CLAUDE_PLUGIN_ROOT}/skills/export/SKILL.md`. Exports governance rules to other AI coding tools (Cursor, Copilot, Windsurf).
+
+**`.claude/skills/report/SKILL.md`** — Copy from `${CLAUDE_PLUGIN_ROOT}/skills/report/SKILL.md`. Governance health report analyzing task history, QC verdicts, and evolution.
+
+**`.claude/skills/insights/SKILL.md`** — Copy from `${CLAUDE_PLUGIN_ROOT}/skills/insights/SKILL.md`. Cross-project intelligence — analyzes anonymized findings to identify patterns.
+
+**`.claude/skills/critique/SKILL.md`** — Copy from `${CLAUDE_PLUGIN_ROOT}/skills/critique/SKILL.md`. Adversarial code review that finds what QC misses.
+
+**`.claude/skills/evolve/changelog-spec.md`** — Copy from `${CLAUDE_PLUGIN_ROOT}/skills/evolve/changelog-spec.md`. Referenced by the evolve skill for changelog formatting rules.
+
 ### 4d. Pattern Files
 For each archetype sampled in Step 2, generate a pattern file showing:
 - The canonical structure (annotated)
@@ -346,7 +381,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Architecture rules: <list key boundaries>
 - Convention rules: <list key conventions>
 - Pattern files: <list generated patterns>
-- Agent skills: preflight, qc, evolve, task-doc, close-task
+- Agent skills: preflight, qc, evolve, task-doc, close-task, export, report, insights, critique
+- Hook scripts: secret-filter, destructive-guard, anti-rationalization, evidence-check, skill-reminder
+- Governance hooks configured in settings.json
 - Task document system with auto-creation and index
 ```
 
@@ -384,10 +421,11 @@ Timestamped log of changes to the governance layer, maintained by `/evolve`.
 |------|----------|--------|--------|
 ```
 
-### 4i. Permission Settings (if auto-accept chosen)
+### 4i. Settings and Hooks
 
-If the user chose auto-accept in Step 3.5, generate `.claude/settings.json` with the following content. Read-only tools (Read, Glob, Grep) are already auto-approved by Claude Code and do not need to be listed.
+**Always** generate `.claude/settings.json` with hook definitions. If the user chose auto-accept in Step 3.5, also include permissions. Read-only tools (Read, Glob, Grep) are already auto-approved by Claude Code and do not need to be listed.
 
+**If auto-accept was chosen:**
 ```json
 {
   "permissions": {
@@ -400,13 +438,86 @@ If the user chose auto-accept in Step 3.5, generate `.claude/settings.json` with
       "WebSearch",
       "NotebookEdit"
     ]
+  },
+  "hooks": { ... }
+}
+```
+
+**If auto-accept was declined:**
+```json
+{
+  "hooks": { ... }
+}
+```
+
+**Hook definitions** (always included):
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/secret-filter.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/destructive-guard.py\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/anti-rationalization.py\""
+          },
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/evidence-check.py\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/skill-reminder.py\""
+          }
+        ]
+      }
+    ]
   }
 }
 ```
 
-The governance hooks (secret-filter, destructive-guard) run as PreToolUse hooks — they fire **before** permission rules are evaluated and can block any dangerous operation regardless of the allow list. This is the safety layer that makes auto-accept viable.
+The governance hooks fire **before** permission rules are evaluated and block dangerous operations regardless of the allow list. This is the safety layer that makes auto-accept viable.
 
-If the user declined auto-accept in Step 3.5, do not generate this file — Claude Code's default permission prompts will apply.
+### 4k. Hook Scripts
+
+Copy all hook scripts from `${CLAUDE_PLUGIN_ROOT}/scripts/` to `.claude/scripts/`:
+
+- `secret-filter.py` — blocks hardcoded API keys, private keys, credentials in Write/Edit
+- `destructive-guard.py` — blocks risky Bash commands (rm -rf, git push --force, etc.)
+- `anti-rationalization.py` — prevents refusal patterns on Stop
+- `evidence-check.py` — verifies claims with file reads before Stop
+- `skill-reminder.py` — tracks prompt count, reminds about QC checkpoints
+- `hook_telemetry.py` — shared logging utility used by all hooks
+
+These scripts are self-contained Python 3 files with no external dependencies. They use relative imports (`hook_telemetry.py` in the same directory) and read from stdin for tool input. No path modifications needed — copy verbatim.
 
 ### 4j. File Storage Detection
 

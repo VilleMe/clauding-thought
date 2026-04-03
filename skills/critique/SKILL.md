@@ -149,7 +149,7 @@ For findings that represent a pattern (not a one-off):
 
 ### Step 6: Export to Cross-Project Insights (Optional)
 
-If `${CLAUDE_PLUGIN_ROOT}/insights/` exists:
+If `~/.claude/clauding-thought/insights/` exists:
 1. For each `serious` finding, create an anonymized finding entry:
    ```json
    {"rule_id": "CRITIQUE-<category>", "tier": "<tier>", "severity": "error", "stack": "<from manifest>", "verdict": "N/A", "outcome": "flagged", "timestamp": "<ISO 8601>", "source": "critique"}
@@ -165,8 +165,8 @@ If `${CLAUDE_PLUGIN_ROOT}/insights/` exists:
    | resilience | architecture |
    | maintainability | convention |
 
-2. Append to `${CLAUDE_PLUGIN_ROOT}/insights/findings.jsonl`
-3. If the insights directory does not exist, skip silently
+2. Append to `~/.claude/clauding-thought/insights/findings.jsonl`
+3. If the insights directory does not exist, create it (including parent directories). If creation fails, skip silently.
 
 ## Rules
 

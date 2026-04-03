@@ -89,9 +89,9 @@ Export anonymized findings to the plugin-level insights store for cross-project 
    ```json
    {"rule_id": "AUTH-001", "tier": "security", "severity": "error", "stack": "php/laravel", "verdict": "BLOCK", "outcome": "fixed", "timestamp": "2026-04-03T14:30:00Z", "source": "qc"}
    ```
-5. Append each entry as a JSON line to `${CLAUDE_PLUGIN_ROOT}/insights/findings.jsonl`
-   - If the file does not exist, create it
-   - If `${CLAUDE_PLUGIN_ROOT}` is not available or the insights directory does not exist, skip silently
+5. Append each entry as a JSON line to `~/.claude/clauding-thought/insights/findings.jsonl`
+   - If the file does not exist, create it (including parent directories)
+   - If the insights directory cannot be created, skip silently
 
 **Privacy constraints — DO NOT include:**
 - Project name or path

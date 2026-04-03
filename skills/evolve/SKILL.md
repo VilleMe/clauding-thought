@@ -266,7 +266,7 @@ Do NOT auto-regenerate exports. The user decides when to run `/export`.
 
 If `governance.packs` exists in the manifest:
 1. Read each installed pack's version from the manifest
-2. Read the bundled pack's `pack.json` from `${CLAUDE_PLUGIN_ROOT}/packs/<name>/`
+2. Read the bundled pack's `pack.json` from `~/.claude/clauding-thought/packs/<name>/`
 3. Compare versions — if the bundled version is newer, an update is available
 4. Check if project rule files have been modified between the pack section markers (if content differs from original, set `customized: true`)
 5. Add to the EVOLVE_REPORT under `pack_updates:`
@@ -282,14 +282,14 @@ Read task documents from `.claude/tasks/` that were closed since the last evolve
 
 Compare this project's governance state against plugin-level cross-project insights.
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/insights/patterns.md`
+1. Read `~/.claude/clauding-thought/insights/patterns.md`
    - If the file does not exist or is empty, skip this step silently
 
 2. **Identify missing enforcement:**
    - For each "Persistent Violation" in the cross-project patterns that matches this project's stack:
      - Check if this project has a corresponding rule in its `security.checks` or rule files
      - If not, suggest adding it
-   - For each hook candidate in `${CLAUDE_PLUGIN_ROOT}/insights/hook-candidates.md`:
+   - For each hook candidate in `~/.claude/clauding-thought/insights/hook-candidates.md`:
      - Check if this project's hook configuration already covers it
      - If not, flag it as a suggestion
 
@@ -308,7 +308,7 @@ Compare this project's governance state against plugin-level cross-project insig
 
 4. If suggestions exist, present them to the user during the Step 4 report review. The user can choose to apply them during Step 5.
 
-If `${CLAUDE_PLUGIN_ROOT}` is not available, skip this step silently.
+If `~/.claude/clauding-thought/insights/` does not exist, skip this step silently.
 
 ## Output
 

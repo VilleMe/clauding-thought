@@ -19,9 +19,9 @@ Individual projects generate findings through QC reviews and critiques. When tho
 ## Input
 
 You read from the plugin-level insights directory:
-1. `${CLAUDE_PLUGIN_ROOT}/insights/findings.jsonl` — the aggregated findings log
-2. `${CLAUDE_PLUGIN_ROOT}/insights/patterns.md` — previously synthesized patterns (if exists)
-3. `${CLAUDE_PLUGIN_ROOT}/insights/hook-candidates.md` — previously identified hook candidates (if exists)
+1. `~/.claude/clauding-thought/insights/findings.jsonl` — the aggregated findings log
+2. `~/.claude/clauding-thought/insights/patterns.md` — previously synthesized patterns (if exists)
+3. `~/.claude/clauding-thought/insights/hook-candidates.md` — previously identified hook candidates (if exists)
 
 If `findings.jsonl` does not exist or is empty, report: "No cross-project findings yet. Findings are exported when tasks are closed via /close-task or flagged by /critique." and exit.
 
@@ -85,7 +85,7 @@ INSIGHTS_RECOMMENDATIONS:
 
 ### Step 1: Load Findings
 
-Read `${CLAUDE_PLUGIN_ROOT}/insights/findings.jsonl`. Parse each line as JSON. Handle malformed lines gracefully — skip them and report the count of skipped lines at the end. For entries missing the `source` field, treat them as `"source": "qc"` (backward compatibility with findings exported before the source field was added).
+Read `~/.claude/clauding-thought/insights/findings.jsonl`. Parse each line as JSON. Handle malformed lines gracefully — skip them and report the count of skipped lines at the end. For entries missing the `source` field, treat them as `"source": "qc"` (backward compatibility with findings exported before the source field was added).
 
 ### Step 2: Aggregate
 
