@@ -1,7 +1,7 @@
 ---
 name: qc
 description: "Quality control review. Evaluates uncommitted changes against manifest-driven security, architecture, and convention rules. Returns a QC_VERDICT."
-argument-hint: "[--diff | --full (default)]"
+argument-hint: "[--diff | --checkpoint | --full (default)]"
 user-invocable: true
 allowed-tools: ["Read", "Glob", "Grep", "Bash", "Write", "Edit"]
 ---
@@ -23,7 +23,7 @@ You have access to:
 
 ## Mode Selection
 
-This skill supports two modes, controlled by the argument:
+This skill supports three modes, controlled by the argument:
 
 ### Full Mode (default, or `--full`)
 Evaluates ALL rules against ALL changed files. Use this for:
@@ -46,6 +46,32 @@ Evaluates only rules whose path scope matches the changed files. Use this for:
 6. Security rules are NEVER skipped — even in diff mode, all security rules evaluate against changed files
 
 **Important:** Diff mode may miss cross-file issues. If diff mode returns PASS, it means "no issues found in the scoped review" — not "the codebase is clean." Always run full mode before closing a task.
+
+### Checkpoint Mode (`--checkpoint`)
+Lightweight mid-phase QC that refreshes context and catches drift. Use this between work phases or when the skill-reminder hook suggests it.
+
+**How checkpoint mode works:**
+1. Read the active task document's `## Phases` table to determine the current phase (the phase with status `in_progress`, or the first `pending` phase if none is in progress)
+2. Identify the archetypes for the current phase
+3. Only load rules whose scope matches those archetypes (similar to diff mode's path scoping, but scoped by archetype rather than changed files)
+4. Only review files changed since the last checkpoint:
+   - Read `.claude/checkpoint-counter.json` for the `last_commit` field (a git commit hash recorded at the previous checkpoint)
+   - If no `last_commit` exists (first checkpoint), use `git log -1 --format=%H` from before the task started, or fall back to reviewing all uncommitted changes
+   - Run `git diff --name-only <last_commit>` to find files changed since that commit, plus `git diff --name-only` and `git status --short` for uncommitted changes
+5. Evaluate the scoped rules against the scoped files
+6. **Re-output the active rules summary** as part of the response — this is the key context refresh that combats attention decay in long sessions
+7. Security rules are NEVER skipped, even in checkpoint mode
+
+**Checkpoint mode does NOT:**
+- Update task status (that is full mode's job)
+- Produce a `## QC Review` section in the task document
+- Block task closure (checkpoints are advisory)
+
+**Checkpoint mode DOES:**
+- Append a checkpoint result to the task document's Phases table (Checkpoint column)
+- Reset the checkpoint counter file (`.claude/checkpoint-counter.json` → `{"count": 0, "last_reset": "<timestamp>"}`)
+
+**Modes are mutually exclusive.** Use `--full`, `--diff`, or `--checkpoint` — not combinations.
 
 ## Process
 
@@ -195,6 +221,41 @@ QC_VERDICT:
 
   notes: ""
 ```
+
+### Checkpoint Output Format
+
+When running in `--checkpoint` mode, return this block instead of QC_VERDICT:
+
+```
+QC_CHECKPOINT:
+  phase: "<current phase name>"
+  phase_number: <N>
+  phase_archetypes: [<archetypes for this phase>]
+  files_reviewed: <count>
+  since: "<last checkpoint timestamp or task creation time>"
+
+  active_rules_refresh:
+    security:
+      - <re-output ALL security rules relevant to current and upcoming phases>
+    architecture:
+      - <re-output relevant architecture rules>
+    conventions:
+      - <re-output relevant convention rules>
+
+  findings:
+    - [file:line] RULE-ID (severity) description
+
+  status: CLEAN | HAS_FINDINGS
+  suggestion: "<what to do next — fix findings before proceeding, or move to next phase>"
+```
+
+The `active_rules_refresh` section is the most important part of a checkpoint. It re-injects the project's rules into the conversation context, counteracting the attention decay that occurs in long sessions. Include the full text of each relevant rule, not just the rule ID.
+
+After generating the checkpoint output, update the active task document:
+1. Find the current phase row in the `## Phases` table
+2. Update its Checkpoint column: `CLEAN YYYY-MM-DD HH:MM` or `HAS_FINDINGS(N) YYYY-MM-DD HH:MM`
+3. Get the current commit hash: `git log -1 --format=%H`
+4. Write `{"count": 0, "last_reset": "<ISO 8601 timestamp>", "last_commit": "<commit hash>"}` to `.claude/checkpoint-counter.json`
 
 ### Step 5: Update Task Document
 

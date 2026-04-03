@@ -1,7 +1,7 @@
 ---
 name: report
 description: "Governance health report. Analyzes task document history, QC verdicts, and governance evolution to produce a governance health summary."
-argument-hint: "[--since YYYY-MM-DD | --last N tasks | --full (default)]"
+argument-hint: "[--since YYYY-MM-DD | --last N tasks | --full (default) | --insights]"
 user-invocable: true
 allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 ---
@@ -30,6 +30,33 @@ Parse the argument:
 - `--since YYYY-MM-DD`: only tasks created after the date
 - `--last N`: only the N most recent tasks
 - No argument: default to `--full`
+
+### Step 1.5: Cross-Project Insights Mode (if `--insights`)
+
+If the argument includes `--insights`, also include cross-project analysis:
+
+1. Read `${CLAUDE_PLUGIN_ROOT}/insights/findings.jsonl`
+2. If the file does not exist or is empty, add a note: "No cross-project findings available. Run `/insights --synthesize` or close tasks with `/close-task` to generate findings."
+3. If data exists, add a `cross_project_insights:` section to the report output:
+
+```
+  cross_project_insights:
+    total_findings: <N>
+    stacks_represented:
+      - stack: "php/laravel"
+        findings: <N>
+      - stack: "typescript/nextjs"
+        findings: <N>
+    most_violated_rules:
+      - rule_id: "AUTH-001"
+        count: <N>
+        stacks: ["php/laravel", "typescript/nextjs"]
+    hook_candidates_identified: <N>
+    patterns_file: "${CLAUDE_PLUGIN_ROOT}/insights/patterns.md"
+    last_synthesized: "<date from patterns.md header, or 'never'>"
+```
+
+When `--insights` is combined with other flags (e.g., `--insights --full`), include both the project-level report and the cross-project insights section. When used alone, only produce the cross-project section.
 
 ### Step 2: Collect QC Data
 

@@ -34,6 +34,14 @@
     {
       "name": "report",
       "description": "Governance health report. Analyzes task history, QC verdicts, and governance evolution."
+    },
+    {
+      "name": "insights",
+      "description": "Cross-project intelligence. Analyzes anonymized findings to identify patterns and suggest rule/hook improvements."
+    },
+    {
+      "name": "critique",
+      "description": "Adversarial code review that finds what QC misses. Challenges logic, design, resilience, and maintainability."
     }
   ],
   "hooks": {

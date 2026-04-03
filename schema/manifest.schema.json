@@ -113,6 +113,12 @@
           "type": "boolean",
           "default": true,
           "description": "Auto-promote task lessons learned to memory/MEMORY.md on close"
+        },
+        "checkpoint_interval": {
+          "type": "integer",
+          "default": 30,
+          "minimum": 10,
+          "description": "Number of user prompts between checkpoint suggestions. The skill-reminder hook tracks prompt count and suggests running /qc --checkpoint after this many prompts."
         }
       }
     },

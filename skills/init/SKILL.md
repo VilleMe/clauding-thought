@@ -140,6 +140,43 @@ Scan the plugin's `packs/` directory (at `${CLAUDE_PLUGIN_ROOT}/packs/`):
 
 If no packs match or the `packs/` directory doesn't exist, skip silently.
 
+## Step 3.8: LEARN — Read Cross-Project Insights
+
+Check whether the plugin has accumulated cross-project intelligence that can improve this project's initial governance.
+
+1. Read `${CLAUDE_PLUGIN_ROOT}/insights/patterns.md` and `${CLAUDE_PLUGIN_ROOT}/insights/hook-candidates.md`
+   - If neither file exists or both are empty, skip this step silently. This is expected for first-time installations or fresh plugin installs.
+
+2. If data exists, extract recommendations relevant to the detected stack from Step 1:
+   - Filter for patterns matching `stack.language` and `stack.framework`
+   - Identify universal patterns (flagged as "across all stacks")
+   - Identify stack-specific patterns
+
+3. **Adjust security posture recommendation:**
+   - If cross-project data shows this stack commonly has security violations that led to BLOCK verdicts, bias toward `strict` posture even for existing codebases
+   - If data shows mostly WARN-level findings, `advisory` may be appropriate
+
+4. **Pre-populate security checks:**
+   - If cross-project findings show specific rules are frequently violated for this stack, add corresponding entries to `security.checks` in the manifest (Step 4a)
+   - Include `"source": "cross-project-insights"` in the check's description field so they are distinguishable from checks derived from codebase analysis
+
+5. **Record pack recommendations for Step 4a:**
+   - If cross-project patterns suggest a specific pack addresses common violations for this stack, note the pack name and reason. In Step 4a, if the user did not already select this pack in Step 3.7, add a comment in the generated manifest noting the recommendation for the next `/evolve` run.
+
+6. **Note in CLAUDE.md:**
+   If cross-project insights influenced the configuration, add a section to the generated CLAUDE.md (Step 4b):
+   ```markdown
+   ## Cross-Project Insights Applied
+
+   This governance layer was informed by anonymized findings from other projects:
+   - <insight 1>: <how it influenced this project's rules>
+   - <insight 2>: <how it influenced this project's rules>
+
+   These can be reviewed and customized via `/evolve`.
+   ```
+
+If `${CLAUDE_PLUGIN_ROOT}` is not available (plugin root not set), skip this step silently.
+
 ## Step 4: GENERATE — Build the Governance Layer
 
 Using your analysis, generate the following files. Each must be specific to THIS project — no generic boilerplate.
@@ -169,7 +206,8 @@ Include the `governance` block:
       "min_files": 3,
       "always_for": ["migration", "security", "new-route", "cross-module"]
     },
-    "promote_lessons": true
+    "promote_lessons": true,
+    "checkpoint_interval": 30
   }
 }
 ```
@@ -353,6 +391,7 @@ If the user chose auto-accept in Step 3.5, generate `.claude/settings.json` with
 ```json
 {
   "permissions": {
+    "defaultMode": "auto",
     "allow": [
       "Bash",
       "Edit",

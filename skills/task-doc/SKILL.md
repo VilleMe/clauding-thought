@@ -28,7 +28,9 @@ open --> in_progress --> review --> closed
 
 ### Phase 1: OPEN (created by /task-doc or manually)
 
-When a task starts, create `.claude/tasks/YYYY-MM-DD-<slug>.md` with:
+When a task starts:
+1. Reset the checkpoint counter by writing `{"count": 0, "last_reset": "<ISO 8601 timestamp>"}` to `.claude/checkpoint-counter.json`. This prevents stale counts from a previous task triggering premature checkpoint suggestions.
+2. Create `.claude/tasks/YYYY-MM-DD-<slug>.md` with:
 
 ```markdown
 # <Task Title>
@@ -45,9 +47,32 @@ When a task starts, create `.claude/tasks/YYYY-MM-DD-<slug>.md` with:
 ## Preflight Brief
 
 <Paste the PREFLIGHT_BRIEF output here>
+
+## Phases
+
+| # | Phase | Archetypes | Scope | Status | Checkpoint |
+|---|-------|------------|-------|--------|------------|
+| 1 | <name> | model, migration | <scope> | pending | -- |
+| 2 | <name> | controller, service | <scope> | pending | -- |
+| 3 | Tests | test | <scope> | pending | -- |
+```
+
+Populate the Phases table from the PREFLIGHT_BRIEF `phases:` output. If preflight was not run or has no phases data, create a single-phase table:
+
+```markdown
+## Phases
+
+| # | Phase | Archetypes | Scope | Status | Checkpoint |
+|---|-------|------------|-------|--------|------------|
+| 1 | Implementation | <all archetypes> | <full task scope> | pending | -- |
 ```
 
 ### Phase 2: IN_PROGRESS (updated during code generation)
+
+**Phase tracking:** As you move through phases, update the Phases table:
+- Set the current phase status to `in_progress`
+- Set completed phases to `done`
+- When `/qc --checkpoint` runs, it populates the Checkpoint column with `CLEAN YYYY-MM-DD HH:MM` or `HAS_FINDINGS(N) YYYY-MM-DD HH:MM`
 
 As code is written, append to the document:
 

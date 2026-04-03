@@ -61,6 +61,31 @@ Flag anything that needs extra care:
 - Migration changes (destructive operations, rollback needs)
 - Existing code that will be affected by this change
 
+### Step 4.5: Recommend Phase Breakdown
+
+Based on the archetypes identified in Step 1, recommend a phased work order. Phases are logical groupings that create natural checkpoint boundaries — points where the agent should pause, re-read active rules, and verify compliance before continuing.
+
+**Phase assignment rules:**
+1. Group archetypes that have tight dependencies (e.g., `model` + `migration` should be one phase)
+2. Keep security-sensitive work (policies, middleware, auth) in an early phase so it can be checkpointed before building on top of it
+3. Tests go in the final phase (they depend on everything else being in place)
+4. Frontend work goes after backend (it depends on API contracts)
+
+**Common phase patterns:**
+
+| Task Shape | Phase Breakdown |
+|------------|----------------|
+| Full-stack feature | 1. Models+Migrations → 2. Services+Validation → 3. Controllers+Routes → 4. Frontend → 5. Tests |
+| API endpoint | 1. Models+Migrations → 2. Service+Controller → 3. Tests |
+| Frontend only | 1. Components → 2. Pages+Integration → 3. Tests |
+| Bug fix | 1. Fix → 2. Regression tests |
+| Security change | 1. Policies+Middleware → 2. Controller updates → 3. Tests |
+| Single archetype | 1. Implementation → 2. Tests |
+
+For tasks that span only 1-2 archetypes, a single phase is fine — checkpoints are most valuable for multi-phase work.
+
+Tell the user: **"Run `/qc --checkpoint` between phases to refresh context and catch issues early."**
+
 ## Output Format
 
 Return a `PREFLIGHT_BRIEF` block:
@@ -70,6 +95,18 @@ PREFLIGHT_BRIEF:
   task: "<one-line summary>"
   archetypes: [model, controller, test, ...]
   module: "<which module this belongs to>"
+
+  phases:
+    - name: "<phase name>"
+      archetypes: [model, migration]
+      scope: "<what gets built in this phase>"
+    - name: "<phase name>"
+      archetypes: [controller, service]
+      scope: "<what gets built in this phase>"
+    - name: "Tests"
+      archetypes: [test]
+      scope: "Test coverage for all new code"
+  checkpoint_interval: <value from manifest.task_docs.checkpoint_interval, default 30>
 
   rules:
     security:

@@ -73,11 +73,40 @@ Format for memory entries:
 - <lesson 2>
 ```
 
+### Step 5.5: Export Cross-Project Insights
+
+Export anonymized findings to the plugin-level insights store for cross-project learning.
+
+1. Read all `## QC Review` sections from the task document. If there are no QC review sections or the reviews contain zero findings, skip this step silently.
+2. For each finding in each QC review, extract:
+   - `rule_id` — the Rule ID (e.g., AUTH-001, TENANCY-003)
+   - `tier` — security, architecture, or convention
+   - `severity` — error, warning, or info
+   - `verdict` — the overall QC verdict for that review (PASS, WARN, BLOCK)
+   - `outcome` — "fixed" if a later QC review no longer has this finding, "suppressed" if it appears in the Suppressions table, "open" otherwise
+3. Read `manifest.json` to get the stack fingerprint: `"<stack.language>/<stack.framework>"` (e.g., "php/laravel", "typescript/nextjs")
+4. Build finding entries:
+   ```json
+   {"rule_id": "AUTH-001", "tier": "security", "severity": "error", "stack": "php/laravel", "verdict": "BLOCK", "outcome": "fixed", "timestamp": "2026-04-03T14:30:00Z", "source": "qc"}
+   ```
+5. Append each entry as a JSON line to `${CLAUDE_PLUGIN_ROOT}/insights/findings.jsonl`
+   - If the file does not exist, create it
+   - If `${CLAUDE_PLUGIN_ROOT}` is not available or the insights directory does not exist, skip silently
+
+**Privacy constraints — DO NOT include:**
+- Project name or path
+- File names or line numbers
+- Code snippets or diff content
+- User names or approver names
+- Suppression reasons (may contain project-specific context)
+
 ### Step 6: Update Task Index
 
 Update `.claude/tasks/INDEX.md` with:
 - Final status: `closed`
 - Commit hash
+
+Reset the checkpoint counter by writing `{"count": 0, "last_reset": "<ISO 8601 timestamp>"}` to `.claude/checkpoint-counter.json`. This prevents stale counts from carrying over to the next task.
 
 ## Principles
 

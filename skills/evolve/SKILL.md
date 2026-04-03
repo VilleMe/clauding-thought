@@ -112,7 +112,7 @@ Compare your fresh analysis against the stored manifest. For each field:
 
 ### Step 4: Generate Update Report
 
-Before making any changes, assemble a complete report. To populate all sections, first perform the checks described in Steps 7 (Validate Suppressions), 7.5 (Check Export Staleness), and 8 (Check Pack Updates). Those steps describe each check in detail — execute them here, during report assembly, so the user sees the full picture before approving.
+Before making any changes, assemble a complete report. To populate all sections, first perform the checks described in Steps 7 (Validate Suppressions), 7.5 (Check Export Staleness), 8 (Check Pack Updates), and 9.5 (Check Cross-Project Patterns). Those steps describe each check in detail — execute them here, during report assembly, so the user sees the full picture before approving.
 
 Present the report:
 
@@ -183,6 +183,16 @@ EVOLVE_REPORT:
     - task: "2026-03-18-fix-tenant-leak.md"
       rule_id: "AUTH-001"
       issue: "Rule renamed to AUTH-007 in this evolve"
+
+  cross_project_suggestions:
+    - type: "missing_rule"
+      rule_id: "AUTH-001"
+      reason: "Violated in 8 projects with this stack. Not covered by current security checks."
+      suggestion: "Add to security.checks"
+    - type: "hook_candidate"
+      rule_id: "SEC-005"
+      reason: "Persistent violation across 5 stacks. Could be caught at write time."
+      suggestion: "Consider adding a PreToolUse hook"
 ```
 
 ### Step 5: Apply Updates
@@ -267,6 +277,38 @@ Read task documents from `.claude/tasks/` that were closed since the last evolve
 - Extract "Lessons Learned" sections
 - Check if any lessons suggest rule changes (these should already be captured in the evolve report)
 - Verify task-driven learnings have been promoted to `.claude/memory/MEMORY.md`
+
+### Step 9.5: Check Cross-Project Patterns
+
+Compare this project's governance state against plugin-level cross-project insights.
+
+1. Read `${CLAUDE_PLUGIN_ROOT}/insights/patterns.md`
+   - If the file does not exist or is empty, skip this step silently
+
+2. **Identify missing enforcement:**
+   - For each "Persistent Violation" in the cross-project patterns that matches this project's stack:
+     - Check if this project has a corresponding rule in its `security.checks` or rule files
+     - If not, suggest adding it
+   - For each hook candidate in `${CLAUDE_PLUGIN_ROOT}/insights/hook-candidates.md`:
+     - Check if this project's hook configuration already covers it
+     - If not, flag it as a suggestion
+
+3. **Add to EVOLVE_REPORT:**
+   ```
+   cross_project_suggestions:
+     - type: "missing_rule"
+       rule_id: "AUTH-001"
+       reason: "Violated in 8 projects with this stack. Not covered by current security checks."
+       suggestion: "Add to security.checks"
+     - type: "hook_candidate"
+       rule_id: "SEC-005"
+       reason: "Persistent violation across 5 stacks. Could be caught at write time."
+       suggestion: "Consider adding a PreToolUse hook"
+   ```
+
+4. If suggestions exist, present them to the user during the Step 4 report review. The user can choose to apply them during Step 5.
+
+If `${CLAUDE_PLUGIN_ROOT}` is not available, skip this step silently.
 
 ## Output
 
