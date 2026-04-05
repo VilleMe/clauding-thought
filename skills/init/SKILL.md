@@ -6,68 +6,68 @@ user-invocable: true
 allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 
-You are the Clauding Thought bootstrap agent. Your job is to analyze a codebase and generate a complete `.claude/` governance layer for it.
+You are the Clauding Thought bootstrap agent. Follow the numbered steps below IN ORDER. Do not skip ahead. Do not start reading project files until you have completed Steps 0 and 0.5.
 
-## Modes
+**IMPORTANT:** An existing root-level `CLAUDE.md` does NOT mean governance is already initialized. You are generating a completely separate `.claude/` directory with 27+ files. The root `CLAUDE.md` is irrelevant — leave it alone.
 
-### Full Init (default)
-Analyzes the codebase from scratch and generates the complete `.claude/` governance layer.
+## YOUR FIRST ACTION — Step 0: Resolve Plugin Root
 
-### Update Mode (`--update`)
-Refreshes boilerplate components without re-analyzing the codebase. Use after updating the Clauding Thought plugin to get the latest skills, hooks, and scripts.
+**Do this RIGHT NOW before reading any project files.** Run this Bash command:
 
-When called with `--update`:
-1. First, run Step 0 (RESOLVE) to determine the plugin root path
-2. Verify `.claude/manifest.json` exists (governance must be initialized first)
-3. Overwrite boilerplate skills by copying from `${CLAUDE_PLUGIN_ROOT}/templates/skills/{export,report,insights,critique}/SKILL.md` to `.claude/skills/{export,report,insights,critique}/SKILL.md`
-4. Overwrite `.claude/skills/evolve/changelog-spec.md` by copying from `${CLAUDE_PLUGIN_ROOT}/templates/evolve/changelog-spec.md`
-5. Overwrite all hook scripts in `.claude/scripts/` with the latest versions from `${CLAUDE_PLUGIN_ROOT}/scripts/`
-6. Merge hooks into `.claude/settings.json` (preserve existing permissions and other settings)
-7. Update `governance.plugin_version` in manifest.json to the current plugin version
-8. Add a `[Unreleased]` changelog entry noting the plugin update
-9. Report what was updated
-
-Do NOT update in `--update` mode: preflight, qc, evolve, task-doc, close-task (these are project-customized). Do NOT re-analyze the codebase or modify rules/patterns/manifest fields (other than `plugin_version`).
-
-## What Full Init Does
-
-You read the project, understand its architecture, and generate everything inside `.claude/`:
-1. `.claude/manifest.json` — the project's DNA (including governance versioning)
-2. `.claude/CLAUDE.md` — master rules document
-3. `.claude/CHANGELOG.md` — initial version entry for the governance layer
-4. `.claude/skills/` — all 10 agent skills (preflight, qc, evolve, task-doc, close-task, export, report, insights, critique)
-5. `.claude/patterns/` — canonical examples of how code looks here
-6. `.claude/rules/` — security, architecture, conventions
-7. `.claude/tasks/INDEX.md` — empty task index ready for use
-8. `.claude/memory/MEMORY.md` — stub memory file for lessons learned
-9. `.claude/memory/decisions.md` — governance decision log
-10. `.claude/scripts/` — governance hook scripts (secret-filter, destructive-guard, etc.)
-11. `.claude/settings.json` — permissions and hook configuration
-
-## Step 0: RESOLVE — Determine Plugin Root Path
-
-Before anything else, resolve the plugin installation directory so you can copy files from it later.
-
-Run this Bash command:
 ```bash
-echo $CLAUDE_PLUGIN_ROOT
+echo "PLUGIN_ROOT=$CLAUDE_PLUGIN_ROOT" && echo "SKILL_DIR=$CLAUDE_SKILL_DIR"
 ```
 
-Store the output as `PLUGIN_ROOT` — you will use it throughout this process to read rule templates, copy boilerplate skills, and copy hook scripts. All `${CLAUDE_PLUGIN_ROOT}` references below mean this resolved path.
+The output gives you the plugin installation directory. Store it as `PLUGIN_ROOT`. You need this path to copy boilerplate skills, scripts, and rule templates later.
 
-If the variable is empty, try `$CLAUDE_SKILL_DIR` and navigate two levels up (`$CLAUDE_SKILL_DIR/../..`).
+If `CLAUDE_PLUGIN_ROOT` is empty, use `CLAUDE_SKILL_DIR` and go two directories up (the skill is at `skills/init/` relative to the plugin root).
 
 **CRITICAL:** If neither resolves to a valid path, stop and tell the user: "Cannot resolve plugin root directory. Try running `/init` from the terminal (not VS Code chat panel) or reinstall the plugin."
 
-## Step 0.5: CREATE — Initialize Directory Structure
+## Step 0.5: Create Directory Skeleton
 
-Create the `.claude/` directory skeleton in the target project root. All generated files go under `.claude/`:
+**Do this IMMEDIATELY after Step 0.** Run:
 
 ```bash
-mkdir -p .claude/skills .claude/rules .claude/patterns .claude/tasks .claude/memory .claude/scripts
+mkdir -p .claude/skills/preflight .claude/skills/qc .claude/skills/evolve .claude/skills/task-doc .claude/skills/close-task .claude/skills/export .claude/skills/report .claude/skills/insights .claude/skills/critique .claude/rules .claude/patterns .claude/tasks .claude/memory .claude/scripts
 ```
 
-This ensures all subsequent Write operations have valid parent directories.
+This creates the `.claude/` directory tree. ALL generated files go inside `.claude/`. Do NOT write files to the project root (except you may leave an existing root CLAUDE.md untouched).
+
+## Update Mode (`--update`)
+
+Only if called with `--update` argument. Otherwise skip to Step 1.
+
+Refreshes boilerplate without re-analyzing. Requires `.claude/manifest.json` to already exist.
+
+1. Complete Steps 0 and 0.5 above
+2. Verify `.claude/manifest.json` exists (if not, tell user to run full `/init` first)
+3. Copy boilerplate skills from `${PLUGIN_ROOT}/templates/skills/{export,report,insights,critique}/SKILL.md` to `.claude/skills/{export,report,insights,critique}/SKILL.md`
+4. Copy `${PLUGIN_ROOT}/templates/evolve/changelog-spec.md` to `.claude/skills/evolve/changelog-spec.md`
+5. Copy all scripts from `${PLUGIN_ROOT}/scripts/` to `.claude/scripts/`
+6. Merge hooks into `.claude/settings.json` (preserve existing permissions)
+7. Update `governance.plugin_version` in manifest.json
+8. Add `[Unreleased]` changelog entry
+9. Report what was updated, then STOP
+
+Do NOT update in `--update` mode: preflight, qc, evolve, task-doc, close-task (project-customized). Do NOT re-analyze.
+
+---
+
+## Full Init — Steps 1 through 5
+
+You will: (1) analyze the project, (2) ask two questions, (3) generate 27+ files inside `.claude/`. The files:
+
+| Category | Files |
+|----------|-------|
+| Config | `.claude/manifest.json`, `.claude/settings.json` |
+| Docs | `.claude/CLAUDE.md`, `.claude/CHANGELOG.md` |
+| Rules | `.claude/rules/security.md`, `architecture.md`, `conventions.md` |
+| Patterns | `.claude/patterns/*.md` (one per archetype) |
+| Skills | `.claude/skills/{preflight,qc,evolve,task-doc,close-task}/SKILL.md` (generated), `.claude/skills/{export,report,insights,critique}/SKILL.md` + `evolve/changelog-spec.md` (copied) |
+| Scripts | `.claude/scripts/{secret-filter,destructive-guard,anti-rationalization,evidence-check,skill-reminder,hook_telemetry}.py` (copied) |
+| Tasks | `.claude/tasks/INDEX.md` |
+| Memory | `.claude/memory/MEMORY.md`, `.claude/memory/decisions.md` |
 
 ## Step 1: DETECT — Identify the Stack
 
