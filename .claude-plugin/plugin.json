@@ -5,10 +5,7 @@
   "commands": [
     {
       "name": "init",
-      "description": "Bootstrap or update governance layer. Generates all skills, hooks, and scripts into .claude/. Use --update to refresh boilerplate after plugin updates."
+      "description": "Bootstrap or update governance layer. Generates all skills, hooks, and scripts into .claude/"
     }
-  ],
-  "hooks": {
-    "SessionStart": true
-  }
+  ]
 }
