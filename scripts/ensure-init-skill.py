@@ -29,7 +29,7 @@ try:
     # Create project-local init skill if it doesn't exist
     init_skill_dst = os.path.join(claude_dir, "skills", "init", "SKILL.md")
     if not os.path.isfile(init_skill_dst):
-        instructions_src = os.path.join(plugin_root, "skills", "init", "INSTRUCTIONS.md")
+        instructions_src = os.path.join(plugin_root, "templates", "init", "INSTRUCTIONS.md")
         if not os.path.isfile(instructions_src):
             sys.exit(0)
 
@@ -52,7 +52,7 @@ try:
             f.write(frontmatter + instructions_content + "\n")
 
         # Copy manifest schema
-        schema_src = os.path.join(plugin_root, "skills", "init", "manifest.schema.json")
+        schema_src = os.path.join(plugin_root, "templates", "init", "manifest.schema.json")
         schema_dst = os.path.join(claude_dir, "skills", "init", "manifest.schema.json")
         if os.path.isfile(schema_src):
             shutil.copy2(schema_src, schema_dst)

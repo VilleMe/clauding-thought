@@ -115,7 +115,7 @@ try:
     # By creating a project-local init skill, /init works correctly.
     init_skill_dst = os.path.join(claude_dir, "skills", "init", "SKILL.md")
     os.makedirs(os.path.dirname(init_skill_dst), exist_ok=True)
-    instructions_src = os.path.join(plugin_root, "skills", "init", "INSTRUCTIONS.md")
+    instructions_src = os.path.join(plugin_root, "templates", "init", "INSTRUCTIONS.md")
     if os.path.isfile(instructions_src) and (update_mode or not os.path.isfile(init_skill_dst)):
         with open(instructions_src, "r", encoding="utf-8") as f:
             instructions_content = f.read()
@@ -132,7 +132,7 @@ try:
         copied_skills.append("skills/init/SKILL.md (project-local)")
 
     # Also copy manifest schema for reference
-    schema_src = os.path.join(plugin_root, "skills", "init", "manifest.schema.json")
+    schema_src = os.path.join(plugin_root, "templates", "init", "manifest.schema.json")
     schema_dst = os.path.join(claude_dir, "skills", "init", "manifest.schema.json")
     if os.path.isfile(schema_src):
         shutil.copy2(schema_src, schema_dst)
