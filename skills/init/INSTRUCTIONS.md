@@ -1,8 +1,24 @@
 # Clauding Thought — Full Init Instructions
 
-The scaffold script has already created the `.claude/` directory tree, copied boilerplate skills (export, report, insights, critique), hook scripts, rule templates, and stub files. Your job now is to analyze the codebase and generate the remaining project-specific files.
-
 **IMPORTANT:** An existing root-level `CLAUDE.md` does NOT mean governance is initialized. Leave it alone. All generated files go inside `.claude/`.
+
+## Step 0: SCAFFOLD — Create Directory Structure
+
+Read `.claude/.plugin-root` to get the plugin installation path. Then run the scaffold script:
+
+```bash
+python "<plugin_root_path>/scripts/scaffold.py"
+```
+
+If `$ARGUMENTS` contains `--update`, add `--update` to the command:
+
+```bash
+python "<plugin_root_path>/scripts/scaffold.py" --update
+```
+
+If `.claude/.plugin-root` does not exist, check `~/.claude/plugins/cache/clauding-thought/` for the plugin path, or ask the user.
+
+The scaffold creates the directory tree, copies boilerplate skills, hook scripts, and rule templates. Its JSON output tells you what was created and what remains. Save the output for reference in later steps.
 
 ## Update Mode
 

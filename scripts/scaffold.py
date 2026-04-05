@@ -116,7 +116,7 @@ try:
     init_skill_dst = os.path.join(claude_dir, "skills", "init", "SKILL.md")
     os.makedirs(os.path.dirname(init_skill_dst), exist_ok=True)
     instructions_src = os.path.join(plugin_root, "skills", "init", "INSTRUCTIONS.md")
-    if os.path.isfile(instructions_src) and not os.path.isfile(init_skill_dst):
+    if os.path.isfile(instructions_src) and (update_mode or not os.path.isfile(init_skill_dst)):
         with open(instructions_src, "r", encoding="utf-8") as f:
             instructions_content = f.read()
         frontmatter = (
