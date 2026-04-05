@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""Scaffolds the .claude/ directory for a new project.
+
+Creates directory structure, copies boilerplate skills, hook scripts,
+and stub files. Run before the analysis phase of /init.
+
+Usage:
+  python scaffold.py           # Full scaffold for new projects
+  python scaffold.py --update  # Refresh boilerplate only (skills, scripts, hooks)
+
+Output: JSON with status, paths, and what was created/remaining.
+"""
+import json
+import os
+import shutil
+import sys
+
+try:
+    # --- Resolve plugin root ---
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    if not plugin_root:
+        skill_dir = os.environ.get("CLAUDE_SKILL_DIR", "")
+        if skill_dir:
+            plugin_root = os.path.normpath(os.path.join(skill_dir, "..", ".."))
+
+    if not plugin_root or not os.path.isdir(plugin_root):
+        print(json.dumps({
+            "status": "error",
+            "error": "Cannot resolve plugin root directory",
+            "CLAUDE_PLUGIN_ROOT": os.environ.get("CLAUDE_PLUGIN_ROOT", "(not set)"),
+            "CLAUDE_SKILL_DIR": os.environ.get("CLAUDE_SKILL_DIR", "(not set)"),
+            "hint": "Try running /init from the terminal or reinstall the plugin"
+        }, indent=2))
+        sys.exit(1)
+
+    update_mode = "--update" in sys.argv
+
+    project_root = os.getcwd()
+    claude_dir = os.path.join(project_root, ".claude")
+
+    # --- Read plugin version ---
+    plugin_json_path = os.path.join(plugin_root, ".claude-plugin", "plugin.json")
+    plugin_version = "unknown"
+    if os.path.isfile(plugin_json_path):
+        with open(plugin_json_path, "r", encoding="utf-8") as f:
+            plugin_version = json.load(f).get("version", "unknown")
+
+    # --- Validate for update mode ---
+    if update_mode:
+        manifest_path = os.path.join(claude_dir, "manifest.json")
+        if not os.path.isfile(manifest_path):
+            print(json.dumps({
+                "status": "error",
+                "error": "No .claude/manifest.json found — run full /init first",
+                "hint": "Run /init without --update to bootstrap the governance layer"
+            }, indent=2))
+            sys.exit(1)
+
+    # --- 1. Create directory tree ---
+    dirs = [
+        "skills/preflight", "skills/qc", "skills/evolve", "skills/task-doc",
+        "skills/close-task", "skills/export", "skills/report", "skills/insights",
+        "skills/critique", "rules", "patterns", "tasks", "memory", "scripts"
+    ]
+    for d in dirs:
+        os.makedirs(os.path.join(claude_dir, d), exist_ok=True)
+
+    # --- 2. Copy boilerplate skills from templates/ ---
+    copied_skills = []
+    template_skills = ["export", "report", "insights", "critique"]
+    for skill in template_skills:
+        src = os.path.join(plugin_root, "templates", "skills", skill, "SKILL.md")
+        dst = os.path.join(claude_dir, "skills", skill, "SKILL.md")
+        if os.path.isfile(src):
+            shutil.copy2(src, dst)
+            copied_skills.append(f"skills/{skill}/SKILL.md")
+
+    # Copy changelog-spec.md for evolve skill
+    src = os.path.join(plugin_root, "templates", "evolve", "changelog-spec.md")
+    dst = os.path.join(claude_dir, "skills", "evolve", "changelog-spec.md")
+    if os.path.isfile(src):
+        shutil.copy2(src, dst)
+        copied_skills.append("skills/evolve/changelog-spec.md")
+
+    # --- 3. Copy hook scripts ---
+    copied_scripts = []
+    scripts_src = os.path.join(plugin_root, "scripts")
+    scripts_dst = os.path.join(claude_dir, "scripts")
+    hook_scripts = [
+        "secret-filter.py", "destructive-guard.py", "anti-rationalization.py",
+        "evidence-check.py", "skill-reminder.py", "hook_telemetry.py"
+    ]
+    for script in hook_scripts:
+        src = os.path.join(scripts_src, script)
+        dst = os.path.join(scripts_dst, script)
+        if os.path.isfile(src):
+            shutil.copy2(src, dst)
+            copied_scripts.append(script)
+
+    # --- 4. Copy rule templates (for hydration by the agent) ---
+    copied_templates = []
+    rules_src = os.path.join(plugin_root, "rules")
+    rules_dst = os.path.join(claude_dir, "rules")
+    if os.path.isdir(rules_src):
+        for fname in os.listdir(rules_src):
+            if fname.endswith(".md"):
+                src = os.path.join(rules_src, fname)
+                # Copy as .template.md so agent knows to hydrate them
+                dst = os.path.join(rules_dst, fname.replace(".md", ".template.md"))
+                shutil.copy2(src, dst)
+                copied_templates.append(fname)
+
+    # --- 5. Generate stub files (only for full init, skip if they exist) ---
+    created_stubs = []
+    if not update_mode:
+        stubs = {
+            "tasks/INDEX.md": (
+                "# Task Index\n\n"
+                "| Date | Task | Status | Module | Commit |\n"
+                "|------|------|--------|--------|--------|\n"
+            ),
+            "memory/MEMORY.md": (
+                "# Project Memory\n\n"
+                "Lessons learned and decisions from tasks are recorded here.\n"
+                "Lines after 200 will be truncated from auto-loading, so keep this file concise.\n"
+                "Use topic files (e.g., `security-lessons.md`, `architecture-decisions.md`) for detailed notes.\n"
+            ),
+            "memory/decisions.md": (
+                "# Governance Decisions\n\n"
+                "Timestamped log of changes to the governance layer, maintained by `/evolve`.\n\n"
+                "| Date | Decision | Reason | Source |\n"
+                "|------|----------|--------|--------|\n"
+            ),
+        }
+        for path, content in stubs.items():
+            filepath = os.path.join(claude_dir, path)
+            if not os.path.exists(filepath):
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(content)
+                created_stubs.append(path)
+
+    # --- Build result ---
+    result = {
+        "status": "success",
+        "mode": "update" if update_mode else "full",
+        "plugin_root": plugin_root,
+        "plugin_version": plugin_version,
+        "claude_dir": claude_dir,
+        "copied_skills": copied_skills,
+        "copied_scripts": copied_scripts,
+        "copied_rule_templates": copied_templates,
+        "created_stubs": created_stubs,
+    }
+
+    if update_mode:
+        result["next_steps"] = [
+            "Update governance.plugin_version in .claude/manifest.json",
+            "Add [Unreleased] changelog entry",
+            "Report what was updated"
+        ]
+    else:
+        result["remaining_for_agent"] = [
+            ".claude/manifest.json — generate from codebase analysis",
+            ".claude/CLAUDE.md — generate governance rules from analysis",
+            ".claude/CHANGELOG.md — generate initial version entry",
+            ".claude/settings.json — generate with hooks and optional permissions",
+            ".claude/rules/security.md — hydrate from .template.md using analysis",
+            ".claude/rules/architecture.md — hydrate from .template.md using analysis",
+            ".claude/rules/conventions.md — hydrate from .template.md using analysis",
+            ".claude/patterns/*.md — generate from code samples",
+            ".claude/skills/preflight/SKILL.md — generate project-customized",
+            ".claude/skills/qc/SKILL.md — generate project-customized",
+            ".claude/skills/evolve/SKILL.md — generate project-customized",
+            ".claude/skills/task-doc/SKILL.md — generate project-customized",
+            ".claude/skills/close-task/SKILL.md — generate project-customized",
+        ]
+
+    print(json.dumps(result, indent=2))
+    sys.exit(0)
+
+except SystemExit:
+    raise
+except Exception as e:
+    print(json.dumps({"status": "error", "error": str(e)}, indent=2))
+    sys.exit(1)

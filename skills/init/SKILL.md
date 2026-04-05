@@ -6,68 +6,47 @@ user-invocable: true
 allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 
-You are the Clauding Thought bootstrap agent. Follow the numbered steps below IN ORDER. Do not skip ahead. Do not start reading project files until you have completed Steps 0 and 0.5.
+You are the Clauding Thought bootstrap agent. Your FIRST action must be running the scaffold script below. Do NOT read any project files before running it.
 
-**IMPORTANT:** An existing root-level `CLAUDE.md` does NOT mean governance is already initialized. You are generating a completely separate `.claude/` directory with 27+ files. The root `CLAUDE.md` is irrelevant — leave it alone.
+**IMPORTANT:** An existing root-level `CLAUDE.md` does NOT mean governance is initialized. You are generating a `.claude/` directory with 27+ files. Leave the root `CLAUDE.md` alone.
 
-## YOUR FIRST ACTION — Step 0: Resolve Plugin Root
+## ▶ YOUR FIRST ACTION — Run Scaffold
 
-**Do this RIGHT NOW before reading any project files.** Run this Bash command:
-
-```bash
-echo "PLUGIN_ROOT=$CLAUDE_PLUGIN_ROOT" && echo "SKILL_DIR=$CLAUDE_SKILL_DIR"
-```
-
-The output gives you the plugin installation directory. Store it as `PLUGIN_ROOT`. You need this path to copy boilerplate skills, scripts, and rule templates later.
-
-If `CLAUDE_PLUGIN_ROOT` is empty, use `CLAUDE_SKILL_DIR` and go two directories up (the skill is at `skills/init/` relative to the plugin root).
-
-**CRITICAL:** If neither resolves to a valid path, stop and tell the user: "Cannot resolve plugin root directory. Try running `/init` from the terminal (not VS Code chat panel) or reinstall the plugin."
-
-## Step 0.5: Create Directory Skeleton
-
-**Do this IMMEDIATELY after Step 0.** Run:
+Run this command IMMEDIATELY. It creates the `.claude/` directory tree, copies boilerplate skills, hook scripts, and rule templates:
 
 ```bash
-mkdir -p .claude/skills/preflight .claude/skills/qc .claude/skills/evolve .claude/skills/task-doc .claude/skills/close-task .claude/skills/export .claude/skills/report .claude/skills/insights .claude/skills/critique .claude/rules .claude/patterns .claude/tasks .claude/memory .claude/scripts
+python "$CLAUDE_PLUGIN_ROOT/scripts/scaffold.py"
 ```
 
-This creates the `.claude/` directory tree. ALL generated files go inside `.claude/`. Do NOT write files to the project root (except you may leave an existing root CLAUDE.md untouched).
+If using `--update` mode, run:
+```bash
+python "$CLAUDE_PLUGIN_ROOT/scripts/scaffold.py" --update
+```
+
+**Read the JSON output.** It tells you:
+- `plugin_root` — where the plugin is installed
+- `plugin_version` — current version
+- `copied_skills` — boilerplate skills already copied (no need to copy again)
+- `copied_scripts` — hook scripts already copied
+- `remaining_for_agent` — files YOU still need to generate
+
+If the script fails with an error, tell the user the error message and stop.
 
 ## Update Mode (`--update`)
 
-Only if called with `--update` argument. Otherwise skip to Step 1.
+If the scaffold output shows `"mode": "update"`, do ONLY these remaining steps:
+1. Merge hooks into `.claude/settings.json` (preserve existing permissions)
+2. Update `governance.plugin_version` in `.claude/manifest.json` to `plugin_version` from scaffold output
+3. Add `[Unreleased]` changelog entry to `.claude/CHANGELOG.md`
+4. Report what was updated, then STOP
 
-Refreshes boilerplate without re-analyzing. Requires `.claude/manifest.json` to already exist.
-
-1. Complete Steps 0 and 0.5 above
-2. Verify `.claude/manifest.json` exists (if not, tell user to run full `/init` first)
-3. Copy boilerplate skills from `${PLUGIN_ROOT}/templates/skills/{export,report,insights,critique}/SKILL.md` to `.claude/skills/{export,report,insights,critique}/SKILL.md`
-4. Copy `${PLUGIN_ROOT}/templates/evolve/changelog-spec.md` to `.claude/skills/evolve/changelog-spec.md`
-5. Copy all scripts from `${PLUGIN_ROOT}/scripts/` to `.claude/scripts/`
-6. Merge hooks into `.claude/settings.json` (preserve existing permissions)
-7. Update `governance.plugin_version` in manifest.json
-8. Add `[Unreleased]` changelog entry
-9. Report what was updated, then STOP
-
-Do NOT update in `--update` mode: preflight, qc, evolve, task-doc, close-task (project-customized). Do NOT re-analyze.
+Do NOT re-analyze. Do NOT touch preflight, qc, evolve, task-doc, close-task.
 
 ---
 
 ## Full Init — Steps 1 through 5
 
-You will: (1) analyze the project, (2) ask two questions, (3) generate 27+ files inside `.claude/`. The files:
-
-| Category | Files |
-|----------|-------|
-| Config | `.claude/manifest.json`, `.claude/settings.json` |
-| Docs | `.claude/CLAUDE.md`, `.claude/CHANGELOG.md` |
-| Rules | `.claude/rules/security.md`, `architecture.md`, `conventions.md` |
-| Patterns | `.claude/patterns/*.md` (one per archetype) |
-| Skills | `.claude/skills/{preflight,qc,evolve,task-doc,close-task}/SKILL.md` (generated), `.claude/skills/{export,report,insights,critique}/SKILL.md` + `evolve/changelog-spec.md` (copied) |
-| Scripts | `.claude/scripts/{secret-filter,destructive-guard,anti-rationalization,evidence-check,skill-reminder,hook_telemetry}.py` (copied) |
-| Tasks | `.claude/tasks/INDEX.md` |
-| Memory | `.claude/memory/MEMORY.md`, `.claude/memory/decisions.md` |
+The scaffold has already created directories and copied boilerplate files. Now you analyze the project and generate the remaining files listed in `remaining_for_agent`.
 
 ## Step 1: DETECT — Identify the Stack
 
@@ -359,21 +338,7 @@ allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 ```
 
-**Boilerplate skills** — These are copied verbatim from the plugin's `templates/skills/` directory. They are NOT project-customized and CAN be overwritten by `--update`. Use the resolved `PLUGIN_ROOT` from Step 0:
-
-**`.claude/skills/export/SKILL.md`** — Copy from `${CLAUDE_PLUGIN_ROOT}/templates/skills/export/SKILL.md`. Exports governance rules to other AI coding tools (Cursor, Copilot, Windsurf).
-
-**`.claude/skills/report/SKILL.md`** — Copy from `${CLAUDE_PLUGIN_ROOT}/templates/skills/report/SKILL.md`. Governance health report analyzing task history, QC verdicts, and evolution.
-
-**`.claude/skills/insights/SKILL.md`** — Copy from `${CLAUDE_PLUGIN_ROOT}/templates/skills/insights/SKILL.md`. Cross-project intelligence — analyzes anonymized findings to identify patterns.
-
-**`.claude/skills/critique/SKILL.md`** — Copy from `${CLAUDE_PLUGIN_ROOT}/templates/skills/critique/SKILL.md`. Adversarial code review that finds what QC misses.
-
-**`.claude/skills/evolve/changelog-spec.md`** — Copy from `${CLAUDE_PLUGIN_ROOT}/templates/evolve/changelog-spec.md`. Referenced by the evolve skill for changelog formatting rules.
-
-**How to copy:** For each boilerplate skill, Read the source file from `PLUGIN_ROOT` and then Write it to the `.claude/skills/` path. Example:
-1. Read `<PLUGIN_ROOT>/templates/skills/export/SKILL.md`
-2. Write the content to `.claude/skills/export/SKILL.md`
+**Boilerplate skills** — Already copied by the scaffold script. These are: export, report, insights, critique (SKILL.md files) and evolve/changelog-spec.md. Do NOT regenerate these — they are already in place.
 
 ### 4d. Pattern Files
 For each archetype sampled in Step 2, generate a pattern file showing:
@@ -384,7 +349,7 @@ For each archetype sampled in Step 2, generate a pattern file showing:
 
 ### 4e. Rule Files
 
-Generate rule files by hydrating the templates from `${CLAUDE_PLUGIN_ROOT}/rules/`:
+The scaffold script copied rule templates to `.claude/rules/` as `*.template.md` files. Hydrate them by replacing placeholders with project-specific content:
 
 **`rules/security.md`** — derived from manifest.security + tenancy + auth analysis
 **`rules/architecture.md`** — derived from manifest.boundaries + layers
@@ -435,37 +400,11 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### 4g. Task Index
 
-Create `.claude/tasks/INDEX.md`:
-
-```markdown
-# Task Index
-
-| Date | Task | Status | Module | Commit |
-|------|------|--------|--------|--------|
-```
+Already created by the scaffold script at `.claude/tasks/INDEX.md`. No action needed.
 
 ### 4h. Memory Directory
 
-Create `.claude/memory/MEMORY.md`:
-
-```markdown
-# Project Memory
-
-Lessons learned and decisions from tasks are recorded here.
-Lines after 200 will be truncated from auto-loading, so keep this file concise.
-Use topic files (e.g., `security-lessons.md`, `architecture-decisions.md`) for detailed notes.
-```
-
-Create `.claude/memory/decisions.md`:
-
-```markdown
-# Governance Decisions
-
-Timestamped log of changes to the governance layer, maintained by `/evolve`.
-
-| Date | Decision | Reason | Source |
-|------|----------|--------|--------|
-```
+Already created by the scaffold script at `.claude/memory/MEMORY.md` and `.claude/memory/decisions.md`. No action needed.
 
 ### 4i. Settings and Hooks
 
@@ -554,16 +493,10 @@ The governance hooks fire **before** permission rules are evaluated and block da
 
 ### 4k. Hook Scripts
 
-Copy all hook scripts from `${CLAUDE_PLUGIN_ROOT}/scripts/` to `.claude/scripts/`:
+Already copied by the scaffold script. The following scripts are in `.claude/scripts/`:
+- `secret-filter.py`, `destructive-guard.py`, `anti-rationalization.py`, `evidence-check.py`, `skill-reminder.py`, `hook_telemetry.py`
 
-- `secret-filter.py` — blocks hardcoded API keys, private keys, credentials in Write/Edit
-- `destructive-guard.py` — blocks risky Bash commands (rm -rf, git push --force, etc.)
-- `anti-rationalization.py` — prevents refusal patterns on Stop
-- `evidence-check.py` — verifies claims with file reads before Stop
-- `skill-reminder.py` — tracks prompt count, reminds about QC checkpoints
-- `hook_telemetry.py` — shared logging utility used by all hooks
-
-These scripts are self-contained Python 3 files with no external dependencies. They use relative imports (`hook_telemetry.py` in the same directory) and read from stdin for tool input. No path modifications needed — copy verbatim.
+Do NOT copy or regenerate these — they are already in place.
 
 ### 4j. File Storage Detection
 
@@ -587,37 +520,29 @@ Write all generated files to the project's `.claude/` directory.
 
 **Completion checklist — verify ALL of these exist before finishing:**
 
-| # | File | Source |
-|---|------|--------|
-| 1 | `.claude/manifest.json` | Generated from analysis |
-| 2 | `.claude/CLAUDE.md` | Generated from analysis |
-| 3 | `.claude/CHANGELOG.md` | Generated (Step 4f) |
-| 4 | `.claude/tasks/INDEX.md` | Generated (Step 4g) |
-| 5 | `.claude/memory/MEMORY.md` | Generated (Step 4h) |
-| 6 | `.claude/memory/decisions.md` | Generated (Step 4h) |
-| 7 | `.claude/settings.json` | Generated (Step 4i) |
-| 8 | `.claude/rules/security.md` | Hydrated from template |
-| 9 | `.claude/rules/architecture.md` | Hydrated from template |
-| 10 | `.claude/rules/conventions.md` | Hydrated from template |
-| 11 | `.claude/patterns/*.md` | Generated from samples |
-| 12 | `.claude/skills/preflight/SKILL.md` | Generated (project-customized) |
-| 13 | `.claude/skills/qc/SKILL.md` | Generated (project-customized) |
-| 14 | `.claude/skills/evolve/SKILL.md` | Generated (project-customized) |
-| 15 | `.claude/skills/task-doc/SKILL.md` | Generated (project-customized) |
-| 16 | `.claude/skills/close-task/SKILL.md` | Generated (project-customized) |
-| 17 | `.claude/skills/export/SKILL.md` | Copied from plugin |
-| 18 | `.claude/skills/report/SKILL.md` | Copied from plugin |
-| 19 | `.claude/skills/insights/SKILL.md` | Copied from plugin |
-| 20 | `.claude/skills/critique/SKILL.md` | Copied from plugin |
-| 21 | `.claude/skills/evolve/changelog-spec.md` | Copied from plugin |
-| 22 | `.claude/scripts/secret-filter.py` | Copied from plugin |
-| 23 | `.claude/scripts/destructive-guard.py` | Copied from plugin |
-| 24 | `.claude/scripts/anti-rationalization.py` | Copied from plugin |
-| 25 | `.claude/scripts/evidence-check.py` | Copied from plugin |
-| 26 | `.claude/scripts/skill-reminder.py` | Copied from plugin |
-| 27 | `.claude/scripts/hook_telemetry.py` | Copied from plugin |
+| # | File | Your job |
+|---|------|----------|
+| 1 | `.claude/manifest.json` | **GENERATE** from analysis |
+| 2 | `.claude/CLAUDE.md` | **GENERATE** from analysis |
+| 3 | `.claude/CHANGELOG.md` | **GENERATE** (Step 4f) |
+| 4 | `.claude/settings.json` | **GENERATE** with hooks (Step 4i) |
+| 5 | `.claude/rules/security.md` | **GENERATE** by hydrating template |
+| 6 | `.claude/rules/architecture.md` | **GENERATE** by hydrating template |
+| 7 | `.claude/rules/conventions.md` | **GENERATE** by hydrating template |
+| 8 | `.claude/patterns/*.md` | **GENERATE** from code samples |
+| 9 | `.claude/skills/preflight/SKILL.md` | **GENERATE** project-customized |
+| 10 | `.claude/skills/qc/SKILL.md` | **GENERATE** project-customized |
+| 11 | `.claude/skills/evolve/SKILL.md` | **GENERATE** project-customized |
+| 12 | `.claude/skills/task-doc/SKILL.md` | **GENERATE** project-customized |
+| 13 | `.claude/skills/close-task/SKILL.md` | **GENERATE** project-customized |
+| 14 | `.claude/tasks/INDEX.md` | scaffold (verify exists) |
+| 15 | `.claude/memory/MEMORY.md` | scaffold (verify exists) |
+| 16 | `.claude/memory/decisions.md` | scaffold (verify exists) |
+| 17-20 | `.claude/skills/{export,report,insights,critique}/SKILL.md` | scaffold (verify exists) |
+| 21 | `.claude/skills/evolve/changelog-spec.md` | scaffold (verify exists) |
+| 22-27 | `.claude/scripts/*.py` (6 files) | scaffold (verify exists) |
 
-If any file is missing, go back and create it. Report what you created and any fields in the manifest you couldn't determine (marked as `null`).
+Items 1-13 are YOUR responsibility to create. Items 14-27 were created by the scaffold script. If any file is missing, go back and create it. Report what you created and any manifest fields you couldn't determine (marked as `null`).
 
 ## Security Posture Detection
 
