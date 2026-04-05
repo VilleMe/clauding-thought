@@ -1,5 +1,5 @@
 {
   "name": "clauding-thought",
   "description": "AI code governance framework. Run /init to bootstrap a project, then all skills work project-locally.",
-  "version": "2.0.1"
+  "version": "2.0.2"
 }
