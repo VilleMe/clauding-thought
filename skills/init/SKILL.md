@@ -257,6 +257,22 @@ Generate a project rules document structured as:
 7. **Service Layer** — where business logic goes
 8. **Security Enforcement** — blocking rules that must never be violated
 9. **Pre-Commit Checklist** — ordered list of checks before finishing
+10. **Memory Management** — include the following section verbatim:
+
+```markdown
+## Memory Management
+
+`.claude/memory/MEMORY.md` is auto-loaded into every session but **only the first 200 lines are read**. When MEMORY.md approaches 200 lines:
+
+1. Move detailed content into topic files in `.claude/memory/`:
+   - `security-lessons.md` — security-related findings and lessons
+   - `architecture-decisions.md` — architectural patterns and decisions
+   - `convention-notes.md` — coding convention insights
+2. Replace the moved content in MEMORY.md with a one-line link: `- See [topic-file.md](memory/topic-file.md) for details`
+3. Keep MEMORY.md under 200 lines with only the most critical facts and links
+
+Do this proactively when adding new lessons — don't wait for it to break.
+```
 
 ### 4c. Agent Skills
 
