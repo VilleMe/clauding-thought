@@ -9,7 +9,7 @@
     {
       "name": "clauding-thought",
       "description": "AI code governance. Run /init to bootstrap, then all 10 skills work as project-local slash commands.",
-      "version": "2.0.4",
+      "version": "2.0.5",
       "author": {
         "name": "VilleMe"
       },

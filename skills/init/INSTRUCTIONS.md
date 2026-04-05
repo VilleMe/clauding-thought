@@ -122,7 +122,7 @@ Record the choice for use in Steps 4a and 4i. Note: `.claude/settings.json` is a
 
 ## Step 3.7: DISCOVER — Rule Packs
 
-Check if `packs/` exists in the plugin root (from scaffold output `plugin_root`):
+Check if packs exist in `~/.claude/clauding-thought/packs/` (or `<plugin_root>/packs/` if the scaffold output included a `plugin_root`):
 1. Read each `packs/*/pack.json`
 2. Filter by `stack_filter`: A pack matches if `stack_filter` is absent/empty (universal pack), or ALL non-empty filter arrays match — `stack_filter.language` (if non-empty) must contain the detected `stack.language`, AND `stack_filter.framework` (if non-empty) must contain the detected `stack.framework`. An empty array means "no constraint" for that dimension.
 3. Present matching packs to the user:
@@ -179,7 +179,7 @@ If `~/.claude/clauding-thought/insights/` does not exist, skip this step silentl
 Using your analysis, generate the following files. Each must be specific to THIS project — no generic boilerplate.
 
 ### 4a. `.claude/manifest.json`
-Fill in every field you can confidently determine. Use `null` for fields you cannot determine. Follow the schema at `<plugin_root>/skills/init/manifest.schema.json` (use the `plugin_root` from the scaffold output).
+Fill in every field you can confidently determine. Use `null` for fields you cannot determine. Follow the schema at `.claude/skills/init/manifest.schema.json`.
 
 Set `version` to `"1.1"` (the current schema version supporting path-scoped rules and severity levels).
 

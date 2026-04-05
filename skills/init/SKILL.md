@@ -6,16 +6,24 @@ user-invocable: true
 allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 
-Do these two steps in order. Do not do anything else first.
+## Setup Required
 
-Step 1. Run the scaffold script. If the argument is --update, add --update to the command:
+This plugin needs a one-time setup before /init works. Run this command in your terminal:
 
-```bash
+```
 python "$CLAUDE_PLUGIN_ROOT/scripts/scaffold.py"
 ```
 
-Step 2. The scaffold output JSON contains a `plugin_root` field. Read the instructions file and follow it:
+This creates the `.claude/` directory with all boilerplate files and a project-local `/init` skill. After running it, type `/init` again and it will analyze your codebase and generate the remaining governance files.
 
-Read the file at: `<plugin_root>/skills/init/INSTRUCTIONS.md`
+If `$CLAUDE_PLUGIN_ROOT` is not set, find the plugin path with:
+```
+ls ~/.claude/plugins/cache/clauding-thought/
+```
+
+For updates after a plugin version bump, run:
+```
+python "$CLAUDE_PLUGIN_ROOT/scripts/scaffold.py" --update
+```
 
 $ARGUMENTS

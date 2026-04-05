@@ -110,7 +110,34 @@ try:
                 shutil.copy2(src, dst)
                 copied_templates.append(fname)
 
-    # --- 5. Generate stub files (only for full init, skip if they exist) ---
+    # --- 5. Create project-local init skill from INSTRUCTIONS.md ---
+    # Plugin skills don't reliably pass SKILL.md body to the agent.
+    # By creating a project-local init skill, /init works correctly.
+    init_skill_dst = os.path.join(claude_dir, "skills", "init", "SKILL.md")
+    os.makedirs(os.path.dirname(init_skill_dst), exist_ok=True)
+    instructions_src = os.path.join(plugin_root, "skills", "init", "INSTRUCTIONS.md")
+    if os.path.isfile(instructions_src) and not os.path.isfile(init_skill_dst):
+        with open(instructions_src, "r", encoding="utf-8") as f:
+            instructions_content = f.read()
+        frontmatter = (
+            "---\n"
+            "name: init\n"
+            'description: "Analyze this codebase and generate the remaining .claude/ governance files. The scaffold script has already created directories and copied boilerplate."\n'
+            "user-invocable: true\n"
+            'allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]\n'
+            "---\n\n"
+        )
+        with open(init_skill_dst, "w", encoding="utf-8") as f:
+            f.write(frontmatter + instructions_content + "\n")
+        copied_skills.append("skills/init/SKILL.md (project-local)")
+
+    # Also copy manifest schema for reference
+    schema_src = os.path.join(plugin_root, "skills", "init", "manifest.schema.json")
+    schema_dst = os.path.join(claude_dir, "skills", "init", "manifest.schema.json")
+    if os.path.isfile(schema_src):
+        shutil.copy2(schema_src, schema_dst)
+
+    # --- 6. Generate stub files (only for full init, skip if they exist) ---
     created_stubs = []
     if not update_mode:
         stubs = {
