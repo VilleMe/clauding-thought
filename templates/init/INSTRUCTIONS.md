@@ -290,6 +290,13 @@ allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 ---
 ```
 
+The generated QC skill MUST include these behavioral rules in its body:
+
+1. **Report, don't judge.** When a rule violation is found, report it with the correct severity. Do NOT downgrade findings by calling them "acceptable", "a deliberate tradeoff", "minor", or "justified". The developer decides what to suppress — QC reports facts.
+2. **Rules are the source of truth.** If `.claude/rules/` says X and the code does Y, that is a violation. QC does not second-guess rules. If a rule is wrong, `/evolve` fixes it — QC enforces what exists.
+3. **Check suppressions, not intent.** The only reason to skip a finding is if it appears in the active task document's Suppressions table. "The developer probably meant to do this" is not a valid reason to skip.
+4. **Convention violations can be errors.** If a convention rule has `<!-- severity: error -->`, it BLOCKs. Do not assume conventions are always warnings — read the inline severity annotation.
+
 **`.claude/skills/evolve/SKILL.md`** — re-analyzes the codebase and updates the manifest and rules. Include frontmatter:
 ```yaml
 ---

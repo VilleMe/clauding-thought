@@ -176,7 +176,7 @@ try:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/secret-filter.py\""
+                                "command": "python .claude/scripts/secret-filter.py"
                             }
                         ]
                     },
@@ -185,7 +185,7 @@ try:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/destructive-guard.py\""
+                                "command": "python .claude/scripts/destructive-guard.py"
                             }
                         ]
                     }
@@ -196,11 +196,11 @@ try:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/anti-rationalization.py\""
+                                "command": "python .claude/scripts/anti-rationalization.py"
                             },
                             {
                                 "type": "command",
-                                "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/evidence-check.py\""
+                                "command": "python .claude/scripts/evidence-check.py"
                             }
                         ]
                     }
@@ -211,7 +211,7 @@ try:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/skill-reminder.py\""
+                                "command": "python .claude/scripts/skill-reminder.py"
                             }
                         ]
                     }

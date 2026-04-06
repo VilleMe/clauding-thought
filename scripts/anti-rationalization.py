@@ -32,6 +32,12 @@ try:
         r"defer(red)?\s+to\s+(next|later|future)",
         r"technical\s+debt\s+to\s+(be\s+)?address(ed)?\s+later",
         r"orthogonal\s+to\s+(our|the|this)",
+        # QC rationalization — downgrading real violations
+        r"deliberate\s+trade\s*-?\s*off",
+        r"acceptable\s+(deviation|violation|exception|compromise|tradeoff|trade-off)",
+        r"(this|the)\s+(is|was)\s+(a\s+)?(justified|intentional|acceptable)\b",
+        r"(minor|low[- ]risk|negligible)\s+(violation|deviation|issue)",
+        r"not\s+(a\s+)?(real|actual|true|genuine)\s+(violation|issue|problem)",
     ]
 
     # Phrases that negate dismissal — if these appear near the match, it's not a rationalization

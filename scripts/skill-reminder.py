@@ -101,8 +101,10 @@ try:
         msg = f"{base_msg} Consider whether any should run for this task."
 
     logger.log("feedback")
-    print(msg, file=sys.stderr)
-    sys.exit(2)
+    # NOTE: exit(2) with stderr feedback hangs Claude Code on Windows
+    # for UserPromptSubmit hooks. Use exit(0) — counter tracking still works,
+    # reminder is silent. The checkpoint escalation still logs to hook-log.jsonl.
+    sys.exit(0)
 except SystemExit:
     raise
 except Exception:
