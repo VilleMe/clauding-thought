@@ -110,15 +110,18 @@ try:
             copied_scripts.append(script)
 
     # --- 4. Copy rule templates (for hydration by the agent) ---
+    # IMPORTANT: Templates go to rule-templates/, NOT rules/.
+    # Claude Code auto-loads .claude/rules/ into the system prompt, and
+    # {{handlebars}} syntax in template files crashes Claude Code (exit 3).
     copied_templates = []
     rules_src = os.path.join(plugin_root, "rules")
-    rules_dst = os.path.join(claude_dir, "rules")
+    templates_dst = os.path.join(claude_dir, "rule-templates")
+    os.makedirs(templates_dst, exist_ok=True)
     if os.path.isdir(rules_src):
         for fname in os.listdir(rules_src):
             if fname.endswith(".md"):
                 src = os.path.join(rules_src, fname)
-                # Copy as .template.md so agent knows to hydrate them
-                dst = os.path.join(rules_dst, fname.replace(".md", ".template.md"))
+                dst = os.path.join(templates_dst, fname)
                 shutil.copy2(src, dst)
                 copied_templates.append(fname)
 
@@ -273,9 +276,9 @@ try:
             ".claude/manifest.json — generate from codebase analysis",
             ".claude/CLAUDE.md — generate governance rules from analysis",
             ".claude/CHANGELOG.md — generate initial version entry",
-            ".claude/rules/security.md — hydrate from .template.md using analysis",
-            ".claude/rules/architecture.md — hydrate from .template.md using analysis",
-            ".claude/rules/conventions.md — hydrate from .template.md using analysis",
+            ".claude/rules/security.md — hydrate from rule-templates/security.md using analysis",
+            ".claude/rules/architecture.md — hydrate from rule-templates/architecture.md using analysis",
+            ".claude/rules/conventions.md — hydrate from rule-templates/conventions.md using analysis",
             ".claude/patterns/*.md — generate from code samples",
             ".claude/skills/preflight/SKILL.md — generate project-customized",
             ".claude/skills/qc/SKILL.md — generate project-customized",

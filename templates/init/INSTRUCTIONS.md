@@ -333,7 +333,7 @@ For each archetype sampled in Step 2, generate a pattern file showing:
 
 ### 4e. Rule Files
 
-The scaffold script copied rule templates to `.claude/rules/` as `*.template.md` files. Hydrate them by replacing placeholders with project-specific content:
+The scaffold script copied rule templates to `.claude/rule-templates/` (NOT `.claude/rules/` — Claude Code auto-loads `rules/` and `{{}}` syntax crashes it). Hydrate them into `.claude/rules/` by replacing placeholders with project-specific content:
 
 **`rules/security.md`** — derived from manifest.security + tenancy + auth analysis
 **`rules/architecture.md`** — derived from manifest.boundaries + layers
