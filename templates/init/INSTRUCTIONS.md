@@ -4,21 +4,21 @@
 
 ## Step 0: SCAFFOLD — Create Directory Structure
 
-Read `.claude/.plugin-root` to get the plugin installation path. Then run the scaffold script:
+Read `.claude/.plugin-root` to get the plugin installation path. Then run the scaffold script directly — it auto-resolves its own plugin root from `.plugin-root` or its file location, so no environment variables are needed:
 
 ```bash
 python "<plugin_root_path>/scripts/scaffold.py"
 ```
 
-If `$ARGUMENTS` contains `--update`, add `--update` to the command:
+If `$ARGUMENTS` contains `--update`, add `--update`:
 
 ```bash
 python "<plugin_root_path>/scripts/scaffold.py" --update
 ```
 
-If `.claude/.plugin-root` does not exist, check `~/.claude/plugins/cache/clauding-thought/` for the plugin path, or ask the user.
+If `.claude/.plugin-root` does not exist, look for the script at `~/.claude/plugins/cache/clauding-thought/` or ask the user.
 
-The scaffold creates the directory tree, copies boilerplate skills, hook scripts, and rule templates. Its JSON output tells you what was created and what remains. Save the output for reference in later steps.
+The scaffold creates the directory tree, copies boilerplate skills, hook scripts, settings.json, and rule templates. Its JSON output tells you what was created and what remains. Save the output for reference in later steps.
 
 ## Update Mode
 

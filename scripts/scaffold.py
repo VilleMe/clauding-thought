@@ -17,11 +17,23 @@ import sys
 
 try:
     # --- Resolve plugin root ---
+    # Priority: env var > .claude/.plugin-root file > script's own location
     plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
     if not plugin_root:
         skill_dir = os.environ.get("CLAUDE_SKILL_DIR", "")
         if skill_dir:
             plugin_root = os.path.normpath(os.path.join(skill_dir, "..", ".."))
+
+    if not plugin_root or not os.path.isdir(plugin_root):
+        # Try reading from .claude/.plugin-root (written by SessionStart hook)
+        plugin_root_file = os.path.join(os.getcwd(), ".claude", ".plugin-root")
+        if os.path.isfile(plugin_root_file):
+            with open(plugin_root_file, "r", encoding="utf-8") as f:
+                plugin_root = f.read().strip()
+
+    if not plugin_root or not os.path.isdir(plugin_root):
+        # Last resort: derive from this script's own location (scripts/scaffold.py -> plugin root)
+        plugin_root = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
     if not plugin_root or not os.path.isdir(plugin_root):
         print(json.dumps({
