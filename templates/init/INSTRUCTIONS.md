@@ -131,10 +131,10 @@ Ask the user:
 
 > "Do you want to auto-accept tool calls? The governance hooks (secret-filter, destructive-guard) will still block dangerous operations in real-time. This removes the manual permission prompt for every Bash/Write/Edit call."
 
-- If **yes** → set `auto_accept = true`, will generate `.claude/settings.json` with permissions and hooks in Step 4i
-- If **no** → set `auto_accept = false`, will generate `.claude/settings.json` with hooks only (no permission overrides)
+- If **yes** → set `auto_accept = true` in the manifest (Step 4a). The scaffold already created `settings.json` with auto-accept permissions and hooks.
+- If **no** → set `auto_accept = false` in the manifest (Step 4a). Note: The scaffold created `settings.json` with auto-accept by default. Tell the user they can remove the `permissions` block from `.claude/settings.json` after init completes.
 
-Record the choice for use in Steps 4a and 4i. Note: `.claude/settings.json` is always generated because it contains the hook definitions.
+Record the choice for Step 4a.
 
 ## Step 3.7: DISCOVER — Rule Packs
 
@@ -388,86 +388,9 @@ Already created by the scaffold script. No action needed.
 
 ### 4i. Settings and Hooks
 
-**Always** generate `.claude/settings.json` with hook definitions. If the user chose auto-accept in Step 3.5, also include permissions. Read-only tools (Read, Glob, Grep) are already auto-approved by Claude Code and do not need to be listed.
+**DO NOT write `.claude/settings.json`** — it was already created by the scaffold script with hooks and permissions. Writing settings.json mid-session crashes Claude Code.
 
-**If auto-accept was chosen:**
-```json
-{
-  "permissions": {
-    "defaultMode": "auto",
-    "allow": [
-      "Bash",
-      "Edit",
-      "Write",
-      "WebFetch",
-      "WebSearch",
-      "NotebookEdit"
-    ]
-  },
-  "hooks": { ... }
-}
-```
-
-**If auto-accept was declined:**
-```json
-{
-  "hooks": { ... }
-}
-```
-
-**Hook definitions** (always included):
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/secret-filter.py\""
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/destructive-guard.py\""
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/anti-rationalization.py\""
-          },
-          {
-            "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/evidence-check.py\""
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/skill-reminder.py\""
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+If you need to verify it exists, read it, but never write or edit it.
 
 ### 4k. Hook Scripts
 
@@ -498,7 +421,7 @@ After generating all files:
 | 1 | `.claude/manifest.json` | **GENERATE** from analysis |
 | 2 | `.claude/CLAUDE.md` | **GENERATE** from analysis |
 | 3 | `.claude/CHANGELOG.md` | **GENERATE** (Step 4f) |
-| 4 | `.claude/settings.json` | **GENERATE** with hooks (Step 4i) |
+| 4 | `.claude/settings.json` | scaffold (DO NOT write — verify exists) |
 | 5 | `.claude/rules/security.md` | **GENERATE** by hydrating template |
 | 6 | `.claude/rules/architecture.md` | **GENERATE** by hydrating template |
 | 7 | `.claude/rules/conventions.md` | **GENERATE** by hydrating template |
@@ -515,7 +438,7 @@ After generating all files:
 | 21 | `.claude/skills/evolve/changelog-spec.md` | scaffold (verify exists) |
 | 22-27 | `.claude/scripts/*.py` (6 files) | scaffold (verify exists) |
 
-Items 1-13 are YOUR responsibility to create. Items 14-27 were created by the scaffold script. If any file is missing, go back and create it. Report what you created and any manifest fields you couldn't determine (marked as `null`).
+Items 1-3 and 5-13 are YOUR responsibility to create. Item 4 and items 14-27 were created by the scaffold script — verify they exist but do NOT recreate them. Report what you created and any manifest fields you couldn't determine (marked as `null`).
 
 ## Security Posture Detection
 

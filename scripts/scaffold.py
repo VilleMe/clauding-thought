@@ -137,7 +137,78 @@ try:
     if os.path.isfile(schema_src):
         shutil.copy2(schema_src, schema_dst)
 
-    # --- 6. Generate stub files (only for full init, skip if they exist) ---
+    # --- 6. Create settings.json with hooks ---
+    # MUST be created by scaffold (not the agent) because Claude Code crashes
+    # if settings.json is written mid-session via the Write tool.
+    settings_path = os.path.join(claude_dir, "settings.json")
+    if not os.path.isfile(settings_path) or update_mode:
+        settings = {
+            "permissions": {
+                "defaultMode": "auto",
+                "allow": [
+                    "Bash",
+                    "Edit",
+                    "Write",
+                    "WebFetch",
+                    "WebSearch",
+                    "NotebookEdit"
+                ]
+            },
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Write|Edit",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/secret-filter.py\""
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": "Bash",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/destructive-guard.py\""
+                            }
+                        ]
+                    }
+                ],
+                "Stop": [
+                    {
+                        "matcher": "",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/anti-rationalization.py\""
+                            },
+                            {
+                                "type": "command",
+                                "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/evidence-check.py\""
+                            }
+                        ]
+                    }
+                ],
+                "UserPromptSubmit": [
+                    {
+                        "matcher": "",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "python \"$CLAUDE_PROJECT_DIR/.claude/scripts/skill-reminder.py\""
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        with open(settings_path, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=2)
+            f.write("\n")
+        copied_skills.append("settings.json (with hooks)")
+
+    # --- 7. Generate stub files (only for full init, skip if they exist) ---
     created_stubs = []
     if not update_mode:
         stubs = {
@@ -190,7 +261,6 @@ try:
             ".claude/manifest.json — generate from codebase analysis",
             ".claude/CLAUDE.md — generate governance rules from analysis",
             ".claude/CHANGELOG.md — generate initial version entry",
-            ".claude/settings.json — generate with hooks and optional permissions",
             ".claude/rules/security.md — hydrate from .template.md using analysis",
             ".claude/rules/architecture.md — hydrate from .template.md using analysis",
             ".claude/rules/conventions.md — hydrate from .template.md using analysis",
