@@ -125,6 +125,19 @@ Route → Middleware → Controller → [FormRequest] → Service → Model → 
 ```
 Which layers exist? Which are skipped?
 
+### Delivery Patterns
+
+Detect patterns where correctness alone is insufficient — where code can pass every test and yet fail to deliver user value. These become candidate rules for the `delivery` tier. Look for:
+
+- **Route → navigation coupling:** Does the project have a navigation/menu component that should list user-visible routes? If so, a "new route added without a nav entry" is a delivery defect. Record which directories hold routes and which holds the nav component.
+- **Cross-module seams:** Does any spec/task doc format in the project describe dependencies between modules (e.g., a `Depends on:` field, `## Seams` sections)? If so, multi-module work should name its producer/consumer explicitly before closing.
+- **Localization touchpoints:** If `all_locales_required` is true, adding UI copy in one locale without updating the others is a delivery defect.
+- **API contract drift:** If the project has a response-shape convention (DTOs, resources, Pydantic models), are there checks that new endpoints follow it?
+
+If NO delivery patterns apply to this project (e.g., pure library, CLI, internal service with no UI), note that `delivery.checks` should remain empty. Do not invent rules.
+
+**Record each detected pattern as a candidate check** with: id (e.g., `DELIV-001`), name, severity, description, detection approach, and affected paths. These go into `manifest.delivery.checks` in Step 4a.
+
 ## Step 3.5: CONFIGURE — Permission Mode
 
 Ask the user:
@@ -320,7 +333,7 @@ If `governance.enforcement.ledger` is true in the manifest, the generated prefli
 
 If `ledger` is false, omit this check entirely — the project has not opted into ledger enforcement.
 
-**`.claude/skills/qc/SKILL.md`** — post-generation review. Security checks derived from the manifest's tenancy, auth, and exposure rules. Architecture checks from module boundaries. Convention checks from conventions section. Include frontmatter:
+**`.claude/skills/qc/SKILL.md`** — post-generation review. Security checks derived from the manifest's tenancy, auth, and exposure rules. Architecture checks from module boundaries. Convention checks from conventions section. Delivery checks from `manifest.delivery.checks` and `rules/delivery.md` (may be empty for projects without user-visible surface). Include frontmatter:
 ```yaml
 ---
 name: qc
@@ -336,6 +349,7 @@ The generated QC skill MUST include these behavioral rules in its body:
 2. **Rules are the source of truth.** If `.claude/rules/` says X and the code does Y, that is a violation. QC does not second-guess rules. If a rule is wrong, `/evolve` fixes it — QC enforces what exists.
 3. **Check suppressions, not intent.** The only reason to skip a finding is if it appears in the active task document's Suppressions table. "The developer probably meant to do this" is not a valid reason to skip.
 4. **Convention violations can be errors.** If a convention rule has `<!-- severity: error -->`, it BLOCKs. Do not assume conventions are always warnings — read the inline severity annotation.
+5. **Load all four tiers.** Security, architecture, conventions, AND delivery. Each has its own rules file and its own section in the verdict. The delivery tier may be empty — report it as "delivery: no checks defined" in that case, not as absent.
 
 **`.claude/skills/evolve/SKILL.md`** — re-analyzes the codebase and updates the manifest and rules. Include frontmatter:
 ```yaml
@@ -413,6 +427,7 @@ The scaffold script copied rule templates to `.claude/rule-templates/` (NOT `.cl
 **`rules/security.md`** — derived from manifest.security + tenancy + auth analysis
 **`rules/architecture.md`** — derived from manifest.boundaries + layers
 **`rules/conventions.md`** — derived from manifest.conventions + sampled patterns
+**`rules/delivery.md`** — derived from manifest.delivery + Step 3 delivery-pattern detection. If no delivery checks were detected, hydrate the template with an empty checks list — the file exists but contains only the structural scaffold, which is the correct state for projects without user-visible delivery concerns.
 
 When hydrating templates, populate:
 - `paths:` YAML frontmatter with the directory globs detected in Step 2 for each rule category
@@ -500,6 +515,7 @@ After generating all files:
 | 5 | `.claude/rules/security.md` | **GENERATE** by hydrating template |
 | 6 | `.claude/rules/architecture.md` | **GENERATE** by hydrating template |
 | 7 | `.claude/rules/conventions.md` | **GENERATE** by hydrating template |
+| 7a | `.claude/rules/delivery.md` | **GENERATE** by hydrating template (empty checks OK) |
 | 8 | `.claude/patterns/*.md` | **GENERATE** from code samples |
 | 9 | `.claude/skills/preflight/SKILL.md` | **GENERATE** project-customized |
 | 10 | `.claude/skills/qc/SKILL.md` | **GENERATE** project-customized |

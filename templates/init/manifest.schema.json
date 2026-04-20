@@ -478,6 +478,35 @@
         }
       }
     },
+    "delivery": {
+      "type": "object",
+      "description": "Delivery-layer checks: rules that catch features passing every correctness gate but delivering no user-visible value. Empty by default — the plugin does NOT bundle stack-specific delivery rules. Projects populate this via /init analysis, /evolve, or community packs.",
+      "properties": {
+        "posture": {
+          "type": "string",
+          "enum": ["strict", "advisory"],
+          "default": "advisory",
+          "description": "strict = all delivery violations BLOCK. advisory = WARN only."
+        },
+        "checks": {
+          "type": "array",
+          "description": "Delivery checks. Shape mirrors security.checks.",
+          "items": {
+            "type": "object",
+            "required": ["id", "name"],
+            "properties": {
+              "id": { "type": "string", "description": "Unique check identifier (e.g., 'DELIV-001')" },
+              "name": { "type": "string", "description": "Human-readable name" },
+              "severity": { "type": "string", "enum": ["error", "warning", "info"], "default": "warning" },
+              "description": { "type": "string" },
+              "detect": { "type": "string", "description": "How QC should detect violations" },
+              "paths": { "type": "array", "items": { "type": "string" }, "description": "File globs the check applies to (omit for project-wide)" }
+            }
+          },
+          "default": []
+        }
+      }
+    },
     "rule_defaults": {
       "type": "object",
       "description": "Default severity settings for rule evaluation. Individual rules can override these via inline annotations. Omit to use tier defaults.",
