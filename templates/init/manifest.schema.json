@@ -73,6 +73,11 @@
               "type": "boolean",
               "default": false,
               "description": "When true, the anti-rationalization hook ignores negation patterns (I'll fix this later) and blocks dismissal language whenever the active task doc has any unchecked [ ] acceptance criteria."
+            },
+            "thesis_demo": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true, the thesis-check hook refuses to allow Stop on a ready-to-close task doc unless it contains a `## Thesis Demo` section with Claim, Script, Observable subsections AND a **Demonstrated:** timestamp within the last 24 hours. Tasks can opt out per-task with `no-user-observable-change: true` in frontmatter or a `## No User-Observable Change` section (intended for infrastructure/refactor work)."
             }
           }
         },

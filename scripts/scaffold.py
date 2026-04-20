@@ -72,14 +72,15 @@ try:
     dirs = [
         "skills/preflight", "skills/qc", "skills/evolve", "skills/task-doc",
         "skills/close-task", "skills/export", "skills/report", "skills/insights",
-        "skills/critique", "rules", "patterns", "tasks", "memory", "scripts"
+        "skills/critique", "skills/thesis",
+        "rules", "patterns", "tasks", "memory", "scripts"
     ]
     for d in dirs:
         os.makedirs(os.path.join(claude_dir, d), exist_ok=True)
 
     # --- 2. Copy boilerplate skills from templates/ ---
     copied_skills = []
-    template_skills = ["export", "report", "insights", "critique"]
+    template_skills = ["export", "report", "insights", "critique", "thesis"]
     for skill in template_skills:
         src = os.path.join(plugin_root, "templates", "skills", skill, "SKILL.md")
         dst = os.path.join(claude_dir, "skills", skill, "SKILL.md")
@@ -101,7 +102,7 @@ try:
     hook_scripts = [
         "secret-filter.py", "destructive-guard.py", "anti-rationalization.py",
         "evidence-check.py", "skill-reminder.py", "hook_telemetry.py",
-        "task_doc.py", "deferral-check.py"
+        "task_doc.py", "deferral-check.py", "thesis-check.py"
     ]
     for script in hook_scripts:
         src = os.path.join(scripts_src, script)
@@ -206,6 +207,10 @@ try:
                             {
                                 "type": "command",
                                 "command": "python .claude/scripts/deferral-check.py"
+                            },
+                            {
+                                "type": "command",
+                                "command": "python .claude/scripts/thesis-check.py"
                             }
                         ]
                     }

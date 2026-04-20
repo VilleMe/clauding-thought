@@ -130,6 +130,105 @@ def strip_code_and_quotes(text):
     return text
 
 
+def has_opt_out_marker(text):
+    """True when the task doc declares no user-observable change.
+
+    Accepted forms:
+    - `no-user-observable-change: true` anywhere in the first 2KB
+    - A `## No User-Observable Change` section (case-insensitive) with any body
+
+    Used by thesis-check to skip enforcement for infrastructure/refactor tasks
+    that deliberately have no user-visible thesis.
+    """
+    if not text:
+        return False
+    head = text[:2048]
+    if re.search(
+        r"no-user-observable-change[\s*]*:[\s*]*true\b", head, re.I
+    ):
+        return True
+    if re.search(
+        r"(?m)^##\s+no\s+user[- ]observable\s+change\b", text, re.I
+    ):
+        return True
+    return False
+
+
+_THESIS_SECTION_RE = re.compile(
+    r"(?m)^##\s+thesis\s+demo\s*\n", re.I
+)
+
+# Timestamps accepted under **Demonstrated:** — either an ISO 8601 datetime
+# (2026-04-20T14:30:00Z / 2026-04-20T14:30:00+00:00) or a plain date.
+_THESIS_TIMESTAMP_RE = re.compile(
+    r"\*\*demonstrated:\*\*\s*"
+    r"(?P<ts>\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?)",
+    re.I,
+)
+
+
+def extract_thesis_demo(text):
+    """Return the `## Thesis Demo` section body, or '' if absent."""
+    return extract_section(text, "Thesis Demo")
+
+
+def validate_thesis_demo(text, max_age_hours=24):
+    """Inspect the `## Thesis Demo` section and report what's missing.
+
+    Returns a dict:
+    - present:     section exists at all
+    - has_claim:   Claim subsection present
+    - has_script:  Script subsection present
+    - has_observable: Observable subsection present
+    - demonstrated_ts: parsed datetime or None
+    - fresh:       demonstrated_ts within max_age_hours (if parsed)
+
+    Does NOT attempt to verify the content of Claim/Script/Observable — that
+    is structurally impossible from regex. The value is forcing the author to
+    produce the structured artifact.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    result = {
+        "present": False,
+        "has_claim": False,
+        "has_script": False,
+        "has_observable": False,
+        "demonstrated_ts": None,
+        "fresh": False,
+    }
+    if not text:
+        return result
+    section = extract_thesis_demo(text)
+    if not section.strip():
+        return result
+    result["present"] = True
+    # Strip fenced blocks before checking subsections so examples inside code
+    # fences don't falsely satisfy the requirements.
+    clean = strip_fenced_blocks(section)
+    result["has_claim"] = bool(re.search(r"\*\*claim:\*\*", clean, re.I))
+    result["has_script"] = bool(re.search(r"\*\*script:\*\*", clean, re.I))
+    result["has_observable"] = bool(
+        re.search(r"\*\*observable:\*\*", clean, re.I)
+    )
+    m = _THESIS_TIMESTAMP_RE.search(clean)
+    if m:
+        ts_text = m.group("ts").replace("Z", "+00:00").replace(" ", "T")
+        try:
+            if "T" in ts_text:
+                ts = datetime.fromisoformat(ts_text)
+            else:
+                ts = datetime.fromisoformat(ts_text + "T00:00:00+00:00")
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            result["demonstrated_ts"] = ts
+            age = datetime.now(timezone.utc) - ts
+            result["fresh"] = age <= timedelta(hours=max_age_hours)
+        except (ValueError, TypeError):
+            pass
+    return result
+
+
 def is_task_ready_to_close(criteria):
     """True when every acceptance-criterion is either [x] or [deferred:...].
 

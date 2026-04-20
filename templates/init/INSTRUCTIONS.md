@@ -149,13 +149,17 @@ The plugin ships three opt-in gates that enforce task-doc conventions. All defau
 3. **Cross-task deferral ledger (`governance.enforcement.ledger`)**
    > "Do you want `close-task` to refuse closures when the project-wide count of open `[deferred:TASK-ID]` items (excluding the closing task's own) exceeds a threshold? Default threshold is 3, configurable via `governance.deferred_threshold`. Only meaningful if you also enabled the deferral format above."
 
+4. **Thesis demo on close (`governance.enforcement.thesis_demo`)**
+   > "Do you want `close-task` to refuse closures on user-visible tasks unless the task doc contains a `## Thesis Demo` section (Claim + Script + Observable + a timestamped demonstration within the last 24 hours)? Infrastructure/refactor tasks can opt out per-task with `no-user-observable-change: true`. The `/thesis` skill authors the section interactively."
+
 Decision defaults if the user declines to answer or is unsure:
 - If the project has an existing `.claude/tasks/` directory with markdown checkboxes, suggest enabling `criteria_format`
 - Only enable `deferred_format` / `ledger` if the user explicitly confirms — these require discipline around every deferral being a tracked task
+- Only enable `thesis_demo` if the project ships user-visible features regularly. For internal/library projects, leave it off.
 
-Record all three answers for Step 4a. Each becomes a boolean under `governance.enforcement.<name>` in `manifest.json`.
+Record all four answers for Step 4a. Each becomes a boolean under `governance.enforcement.<name>` in `manifest.json`.
 
-When all three flags stay off, the hooks still run but log their findings as `decision: "skipped"` in `.claude/hook-log.jsonl`. The user can promote flags to true later by editing `manifest.json` directly or re-running `/init --update`.
+When all flags stay off, the hooks still run but log their findings as `decision: "skipped"` in `.claude/hook-log.jsonl`. The user can promote flags to true later by editing `manifest.json` directly or re-running `/init --update`.
 
 ## Step 3.7: DISCOVER — Rule Packs
 
@@ -234,7 +238,8 @@ Include the `governance` block:
     "enforcement": {
       "criteria_format": false,
       "deferred_format": false,
-      "ledger": false
+      "ledger": false,
+      "thesis_demo": false
     },
     "packs": [
       { "name": "<pack-name>", "version": "<version>", "applied": "<today>", "customized": false }
@@ -387,11 +392,12 @@ The generated close-task skill MUST enforce these pre-close checks in order. Eac
 1. **(`criteria_format`) All acceptance criteria resolved.** Every item in `## Acceptance Criteria` must be `[x]` or `[deferred:TASK-ID]`. Unchecked `[ ]` items block the close.
 2. **(`deferred_format`) Deferrals well-formed.** Every `[deferred:TASK-ID]` references a real task file or INDEX.md entry; no free-text deferrals in checkbox lines.
 3. **(`ledger`) Deferred-item ledger under threshold.** Sum all open `[deferred:TASK-ID]` lines across non-closed task docs, *excluding* the current task's own deferrals. Refuse to close the current task if the sum exceeds `manifest.governance.deferred_threshold` (default 3). If the ledger is intentionally high, the developer raises the threshold in the manifest — the skill does not override.
-4. **QC verdict must not be BLOCK.** Existing rule — always enforced regardless of flags.
+4. **(`thesis_demo`) Thesis Demo present and fresh.** The task must have a `## Thesis Demo` section with Claim, Script, Observable subsections AND a `**Demonstrated:**` timestamp within the last 24 hours. Exception: tasks with `no-user-observable-change: true` in frontmatter or a `## No User-Observable Change` section skip this check. Direct the user to run `/thesis` if the section is missing.
+5. **QC verdict must not be BLOCK.** Existing rule — always enforced regardless of flags.
 
-The `deferral-check` hook on Stop enforces checks 2 and 3 independently of the skill when their flags are on (and logs `decision: "skipped"` when off). The skill's role is to report what would block *before* requesting the close and give the developer a clear path to resolution.
+The `deferral-check` and `thesis-check` hooks on Stop enforce checks 2, 3, and 4 independently of the skill when their flags are on (and log `decision: "skipped"` when off). The skill's role is to report what would block *before* requesting the close and give the developer a clear path to resolution.
 
-**Boilerplate skills** — Already copied by the scaffold script. These are: export, report, insights, critique (SKILL.md files) and evolve/changelog-spec.md. Do NOT regenerate these — they are already in place.
+**Boilerplate skills** — Already copied by the scaffold script. These are: export, report, insights, critique, thesis (SKILL.md files) and evolve/changelog-spec.md. Do NOT regenerate these — they are already in place.
 
 ### 4d. Pattern Files
 For each archetype sampled in Step 2, generate a pattern file showing:
@@ -445,7 +451,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Architecture rules: <list key boundaries>
 - Convention rules: <list key conventions>
 - Pattern files: <list generated patterns>
-- Agent skills: preflight, qc, evolve, task-doc, close-task, export, report, insights, critique
+- Agent skills: preflight, qc, evolve, task-doc, close-task, export, report, insights, critique, thesis
 - Hook scripts: secret-filter, destructive-guard, anti-rationalization, evidence-check, skill-reminder
 - Governance hooks configured in settings.json
 - Task document system with auto-creation and index
@@ -503,7 +509,7 @@ After generating all files:
 | 14 | `.claude/tasks/INDEX.md` | scaffold (verify exists) |
 | 15 | `.claude/memory/MEMORY.md` | scaffold (verify exists) |
 | 16 | `.claude/memory/decisions.md` | scaffold (verify exists) |
-| 17-20 | `.claude/skills/{export,report,insights,critique}/SKILL.md` | scaffold (verify exists) |
+| 17-21 | `.claude/skills/{export,report,insights,critique,thesis}/SKILL.md` | scaffold (verify exists) |
 | 21 | `.claude/skills/evolve/changelog-spec.md` | scaffold (verify exists) |
 | 22-27 | `.claude/scripts/*.py` (6 files) | scaffold (verify exists) |
 
