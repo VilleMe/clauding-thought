@@ -186,6 +186,13 @@ def validate_thesis_demo(text, max_age_hours=24):
     Does NOT attempt to verify the content of Claim/Script/Observable — that
     is structurally impossible from regex. The value is forcing the author to
     produce the structured artifact.
+
+    Callers that gate on thesis_demo should also gate on is_task_ready_to_close
+    so the check only fires when the task is actually attempting closure. A
+    task with no `## Acceptance Criteria` section is never considered ready to
+    close by this helper, which means thesis_demo enforcement silently skips
+    prose-style task docs. Projects using prose tasks should also enable
+    `criteria_format` so the author is nudged toward the structured form.
     """
     from datetime import datetime, timezone, timedelta
 

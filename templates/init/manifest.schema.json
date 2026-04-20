@@ -525,9 +525,9 @@
         },
         "convention_severity": {
           "type": "string",
-          "enum": ["warning", "info"],
+          "enum": ["error", "warning", "info"],
           "default": "warning",
-          "description": "Default severity for convention rules. Cannot be 'error' — conventions never BLOCK."
+          "description": "Default severity for convention rules. Sections may override to 'error' for functional requirements (e.g., i18n contracts, data-format contracts) via inline `<!-- severity: error -->` annotations."
         }
       }
     }

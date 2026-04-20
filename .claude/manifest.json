@@ -1,0 +1,45 @@
+{
+  "$comment": "The clauding-thought plugin dogfoods its own governance. This manifest declares the enforcement stance for work in this repo. Hooks are NOT scaffolded here (the plugin IS the source of hooks); these flags document intent and will be honored when a contributor runs the plugin's own tooling against the repo.",
+  "governance": {
+    "version": "2.4.1",
+    "initialized": "2026-04-20",
+    "last_evolved": null,
+    "changelog": "CHANGELOG.md",
+    "auto_accept": true,
+    "plugin_version": "2.4.1",
+    "deferred_threshold": 3,
+    "enforcement": {
+      "criteria_format": true,
+      "deferred_format": true,
+      "ledger": true,
+      "thesis_demo": false
+    },
+    "packs": []
+  },
+  "task_docs": {
+    "enabled": true,
+    "directory": "tasks",
+    "auto_create_threshold": {
+      "min_files": 3,
+      "always_for": ["migration", "security", "new-route", "cross-module"]
+    },
+    "promote_lessons": true,
+    "checkpoint_interval": 30
+  },
+  "stack": {
+    "language": "python",
+    "framework": "none",
+    "db": "none",
+    "testing": "manual"
+  },
+  "delivery": {
+    "posture": "advisory",
+    "checks": []
+  },
+  "security": {
+    "posture": "advisory",
+    "baseline_gaps": [],
+    "checks": [],
+    "sensitive_fields": []
+  }
+}

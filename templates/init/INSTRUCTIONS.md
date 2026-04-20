@@ -165,6 +165,8 @@ The plugin ships three opt-in gates that enforce task-doc conventions. All defau
 4. **Thesis demo on close (`governance.enforcement.thesis_demo`)**
    > "Do you want `close-task` to refuse closures on user-visible tasks unless the task doc contains a `## Thesis Demo` section (Claim + Script + Observable + a timestamped demonstration within the last 24 hours)? Infrastructure/refactor tasks can opt out per-task with `no-user-observable-change: true`. The `/thesis` skill authors the section interactively."
 
+   **Dependency:** `thesis_demo` only fires on tasks that are "ready to close" — i.e., tasks whose `## Acceptance Criteria` section contains at least one checkbox and all checkboxes are `[x]` or `[deferred:TASK-ID]`. Tasks written as prose without a structured criteria section never trigger the thesis gate. If you want thesis enforcement and your project uses prose task docs, enable `criteria_format` as well so the author is nudged toward the checkbox structure.
+
 Decision defaults if the user declines to answer or is unsure:
 - If the project has an existing `.claude/tasks/` directory with markdown checkboxes, suggest enabling `criteria_format`
 - Only enable `deferred_format` / `ledger` if the user explicitly confirms — these require discipline around every deferral being a tracked task
@@ -350,6 +352,7 @@ The generated QC skill MUST include these behavioral rules in its body:
 3. **Check suppressions, not intent.** The only reason to skip a finding is if it appears in the active task document's Suppressions table. "The developer probably meant to do this" is not a valid reason to skip.
 4. **Convention violations can be errors.** If a convention rule has `<!-- severity: error -->`, it BLOCKs. Do not assume conventions are always warnings — read the inline severity annotation.
 5. **Load all four tiers.** Security, architecture, conventions, AND delivery. Each has its own rules file and its own section in the verdict. The delivery tier may be empty — report it as "delivery: no checks defined" in that case, not as absent.
+6. **Respect posture fields.** `manifest.security.posture` and `manifest.delivery.posture` each take values `strict` or `advisory`. `strict` means violations in that tier emit BLOCK verdicts; `advisory` means WARN only. Convention severity is always per-rule (via inline annotations); architecture severity is per-rule too. Security defaults to strict for new projects, advisory for existing. Delivery defaults to advisory.
 
 **`.claude/skills/evolve/SKILL.md`** — re-analyzes the codebase and updates the manifest and rules. Include frontmatter:
 ```yaml
