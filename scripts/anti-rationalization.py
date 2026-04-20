@@ -8,6 +8,7 @@ from task_doc import (
     find_active_task,
     parse_acceptance_criteria,
     get_enforcement_flag,
+    strip_code_and_quotes,
 )
 
 try:
@@ -20,6 +21,15 @@ try:
 
     response = data.get("response", "")
     if not response:
+        logger.log("allow")
+        sys.exit(0)
+
+    # Strip fenced code blocks, inline backtick spans, and blockquote lines
+    # from the response before scanning for dismissal/rationalization phrases.
+    # This keeps quoted text, code examples, and documentation from tripping
+    # false positives when the author is agreeing to fix something.
+    response = strip_code_and_quotes(response)
+    if not response.strip():
         logger.log("allow")
         sys.exit(0)
 

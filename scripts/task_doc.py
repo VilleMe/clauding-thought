@@ -108,6 +108,53 @@ def strip_fenced_blocks(text):
     return _FENCE_RE.sub("", text)
 
 
+# Matches inline code spans (single or double backticks, non-greedy).
+_INLINE_CODE_RE = re.compile(r"`{1,2}[^`\n]+?`{1,2}")
+
+# Matches markdown blockquote lines (lines beginning with `>`).
+_BLOCKQUOTE_RE = re.compile(r"(?m)^\s*>.*$")
+
+
+def strip_code_and_quotes(text):
+    """Remove fenced blocks, inline code, and blockquoted lines from text.
+
+    Used before scanning agent response text for dismissal/rationalization
+    phrases so that quoted content, code examples, and block quotes do not
+    trigger false positives.
+    """
+    if not text:
+        return text
+    text = _FENCE_RE.sub("", text)
+    text = _INLINE_CODE_RE.sub("", text)
+    text = _BLOCKQUOTE_RE.sub("", text)
+    return text
+
+
+def is_task_ready_to_close(criteria):
+    """True when every acceptance-criterion is either [x] or [deferred:...].
+
+    Accepts the dict returned by parse_acceptance_criteria. A task with zero
+    criteria returns False — we cannot tell if it is ready to close without
+    the author declaring done-ness somewhere. This is deliberately conservative:
+    the ledger check that uses this helper should not fire on tasks without
+    criteria at all.
+    """
+    if not criteria:
+        return False
+    total = (
+        criteria.get("checked", 0)
+        + criteria.get("unchecked", 0)
+        + len(criteria.get("deferred", []))
+        + criteria.get("invalid", 0)
+    )
+    if total == 0:
+        return False
+    return (
+        criteria.get("unchecked", 0) == 0
+        and criteria.get("invalid", 0) == 0
+    )
+
+
 def parse_acceptance_criteria(text):
     """Parse the Acceptance Criteria section and categorize each checkbox.
 

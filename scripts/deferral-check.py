@@ -21,6 +21,7 @@ from task_doc import (
     task_id_exists,
     get_enforcement_flag,
     strip_fenced_blocks,
+    is_task_ready_to_close,
 )
 
 try:
@@ -97,7 +98,12 @@ try:
                        context={**context, "flag": "deferred_format"})
 
     # --- Check 3: ledger threshold ---
-    if ledger_on:
+    # Trigger: the active task on disk is "ready to close" — every acceptance
+    # criterion is [x] or [deferred:TASK-ID] and there are no invalid markers.
+    # This is a file-state signal, not a text-sniff of the response, so
+    # incidental mentions of close-task/closed/finalizing in the response do
+    # not trigger the check.
+    if ledger_on and is_task_ready_to_close(criteria):
         threshold = 3
         try:
             manifest_path = os.path.join(claude_dir, "manifest.json")
@@ -116,27 +122,18 @@ try:
         own = len(criteria["deferred"])
         ledger = max(0, total - own)
 
-        response = data.get("response", "")
-        is_closing = bool(
-            re.search(
-                r"(close[- ]task|status:\s*closed|task\s+closed|finali[sz]ing)",
-                response,
-                re.I,
-            )
-        )
-
-        if is_closing and ledger > threshold:
+        if ledger > threshold:
             logger.log(
                 "feedback",
                 reason="Deferred-item ledger over threshold",
                 context={"ledger": ledger, "own": own, "threshold": threshold},
             )
             print(
-                f"Deferred-item ledger is {ledger} (excluding this task's own "
-                f"{own} deferrals), over threshold {threshold}. Close or resolve "
-                "existing deferrals before closing this task, or raise "
-                "`governance.deferred_threshold` in manifest.json if the current "
-                "level is intentional.",
+                f"The active task is ready to close, but the deferred-item ledger "
+                f"is {ledger} (excluding this task's own {own} deferrals), over "
+                f"threshold {threshold}. Resolve existing deferrals before closing, "
+                "or raise `governance.deferred_threshold` in manifest.json if the "
+                "current level is intentional.",
                 file=sys.stderr,
             )
             sys.exit(2)
