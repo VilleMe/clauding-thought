@@ -3,6 +3,12 @@
 import sys, json, re, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from hook_telemetry import TelemetryLogger
+from task_doc import (
+    find_claude_dir,
+    find_active_task,
+    parse_acceptance_criteria,
+    get_enforcement_flag,
+)
 
 try:
     data = json.load(sys.stdin)
@@ -55,21 +61,51 @@ try:
 
     match = dismissal_regex.search(response)
     if match:
+        # When the active task still has unchecked acceptance criteria, dismissal
+        # language is never acceptable — but this gate is opt-in (not every
+        # project uses the acceptance-criteria checkbox convention). It fires
+        # only when governance.enforcement.criteria_format is true.
+        claude_dir = find_claude_dir()
+        criteria_enforced = get_enforcement_flag(claude_dir, "criteria_format")
+        _, task_text = find_active_task(claude_dir) if criteria_enforced else (None, None)
+        criteria = parse_acceptance_criteria(task_text) if task_text else None
+        unchecked_blocks_dismissal = bool(
+            criteria_enforced and criteria and criteria["unchecked"] > 0
+        )
+
         # Look for negation within 200 chars around the match
         start = max(0, match.start() - 200)
         end = min(len(response), match.end() + 200)
         context = response[start:end]
 
-        if not negation_regex.search(context):
-            logger.log("feedback",
-                       reason="Rationalization detected — dismissal without acknowledgment",
-                       pattern=match.group(0)[:100],
-                       context={"matched_phrase": match.group(0)[:200]})
-            print(
-                "If you identified an issue during this task, address it or document it as tech debt with a tracking ID. "
-                "Don't dismiss issues without explicit acknowledgment and a plan.",
-                file=sys.stderr
+        if unchecked_blocks_dismissal or not negation_regex.search(context):
+            reason = (
+                "Rationalization detected — dismissal while acceptance criteria remain unchecked"
+                if unchecked_blocks_dismissal
+                else "Rationalization detected — dismissal without acknowledgment"
             )
+            logger.log("feedback",
+                       reason=reason,
+                       pattern=match.group(0)[:100],
+                       context={
+                           "matched_phrase": match.group(0)[:200],
+                           "unchecked_criteria": criteria["unchecked"] if criteria else 0,
+                       })
+            if unchecked_blocks_dismissal:
+                print(
+                    f"The active task has {criteria['unchecked']} unchecked acceptance "
+                    "criteria. Dismissing issues while criteria remain open is not allowed. "
+                    "Check each item, mark it `[deferred:TASK-ID]` with a tracked follow-up "
+                    "task, or keep working.",
+                    file=sys.stderr
+                )
+            else:
+                print(
+                    "If you identified an issue during this task, address it or document "
+                    "it as tech debt with a tracking ID. Don't dismiss issues without "
+                    "explicit acknowledgment and a plan.",
+                    file=sys.stderr
+                )
             sys.exit(2)
 
     logger.log("allow")

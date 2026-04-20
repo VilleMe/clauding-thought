@@ -100,7 +100,8 @@ try:
     scripts_dst = os.path.join(claude_dir, "scripts")
     hook_scripts = [
         "secret-filter.py", "destructive-guard.py", "anti-rationalization.py",
-        "evidence-check.py", "skill-reminder.py", "hook_telemetry.py"
+        "evidence-check.py", "skill-reminder.py", "hook_telemetry.py",
+        "task_doc.py", "deferral-check.py"
     ]
     for script in hook_scripts:
         src = os.path.join(scripts_src, script)
@@ -201,6 +202,10 @@ try:
                             {
                                 "type": "command",
                                 "command": "python .claude/scripts/evidence-check.py"
+                            },
+                            {
+                                "type": "command",
+                                "command": "python .claude/scripts/deferral-check.py"
                             }
                         ]
                     }

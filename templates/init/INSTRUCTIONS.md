@@ -136,6 +136,27 @@ Ask the user:
 
 Record the choice for Step 4a.
 
+## Step 3.6: CONFIGURE — Task-Doc Enforcement Opt-Ins
+
+The plugin ships three opt-in gates that enforce task-doc conventions. All default to **off** — the plugin does not impose a convention the project has not explicitly adopted. Ask the user about each:
+
+1. **Acceptance-criteria checkbox convention (`governance.enforcement.criteria_format`)**
+   > "Do you want the anti-rationalization hook to block dismissal language (e.g., 'deliberate tradeoff', 'out of scope') whenever the active task doc has any unchecked `[ ]` acceptance-criteria items? This assumes tasks use markdown checkboxes under an `## Acceptance Criteria` heading."
+
+2. **Deferral format (`governance.enforcement.deferred_format`)**
+   > "Do you want to enforce the `[deferred:TASK-ID]` checkbox form for acceptance-criteria items that are pushed to follow-up work? Free-text deferrals ('will do later', 'follow-up task') are rejected; TASK-ID must resolve to a real task file or entry in `tasks/INDEX.md`."
+
+3. **Cross-task deferral ledger (`governance.enforcement.ledger`)**
+   > "Do you want `close-task` to refuse closures when the project-wide count of open `[deferred:TASK-ID]` items (excluding the closing task's own) exceeds a threshold? Default threshold is 3, configurable via `governance.deferred_threshold`. Only meaningful if you also enabled the deferral format above."
+
+Decision defaults if the user declines to answer or is unsure:
+- If the project has an existing `.claude/tasks/` directory with markdown checkboxes, suggest enabling `criteria_format`
+- Only enable `deferred_format` / `ledger` if the user explicitly confirms — these require discipline around every deferral being a tracked task
+
+Record all three answers for Step 4a. Each becomes a boolean under `governance.enforcement.<name>` in `manifest.json`.
+
+When all three flags stay off, the hooks still run but log their findings as `decision: "skipped"` in `.claude/hook-log.jsonl`. The user can promote flags to true later by editing `manifest.json` directly or re-running `/init --update`.
+
 ## Step 3.7: DISCOVER — Rule Packs
 
 Check if packs exist in `~/.claude/clauding-thought/packs/` (or `<plugin_root>/packs/` if the scaffold output included a `plugin_root`):
@@ -209,6 +230,12 @@ Include the `governance` block:
     "changelog": "CHANGELOG.md",
     "auto_accept": true | false,
     "plugin_version": "<version from scaffold output>",
+    "deferred_threshold": 3,
+    "enforcement": {
+      "criteria_format": false,
+      "deferred_format": false,
+      "ledger": false
+    },
     "packs": [
       { "name": "<pack-name>", "version": "<version>", "applied": "<today>", "customized": false }
     ]
@@ -225,6 +252,8 @@ Include the `governance` block:
   }
 }
 ```
+
+Set each `governance.enforcement.*` flag to the value the user chose in Step 3.6. Defaults are `false` — do not turn a flag on unless the user explicitly opted in.
 
 Populate `governance.packs` with the packs selected in Step 3.7 (empty array `[]` if none selected).
 
@@ -280,6 +309,12 @@ allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 ---
 ```
 
+If `governance.enforcement.ledger` is true in the manifest, the generated preflight skill MUST count open `[deferred:TASK-ID]` items across `.claude/tasks/*.md` (excluding INDEX.md and closed task docs, and excluding the current task's own deferrals) before issuing its brief. If the count exceeds `manifest.governance.deferred_threshold` (default 3), prepend a warning to the brief:
+
+> Deferred-item ledger at N items (threshold M). `/close-task` will refuse new closures until the ledger drops below the threshold. Consider resolving existing deferrals before starting new work.
+
+If `ledger` is false, omit this check entirely — the project has not opted into ledger enforcement.
+
 **`.claude/skills/qc/SKILL.md`** — post-generation review. Security checks derived from the manifest's tenancy, auth, and exposure rules. Architecture checks from module boundaries. Convention checks from conventions section. Include frontmatter:
 ```yaml
 ---
@@ -318,6 +353,24 @@ allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 ```
 
+If `governance.enforcement.criteria_format` OR `governance.enforcement.deferred_format` is true, the generated task-doc skill MUST use the following acceptance-criteria format in new task templates:
+
+```markdown
+## Acceptance Criteria
+
+- [ ] Criterion one — unchecked, blocks close
+- [x] Criterion two — done
+- [deferred:TASK-YYYYMMDD-slug] Criterion three — tracked in a separate task
+```
+
+Rules the generated skill MUST embed when the corresponding flag is on:
+
+1. **(`deferred_format`) Only three marker forms are valid:** `[ ]`, `[x]`, and `[deferred:TASK-ID]`. Free-text deferrals ("to be done later", "follow-up task", "deferred — tracked for next sprint") are rejected by the `deferral-check` hook.
+2. **(`deferred_format`) Deferred TASK-IDs must resolve.** Before writing a `[deferred:TASK-ID]` line, create the follow-up task file or add the TASK-ID to `tasks/INDEX.md`. Dangling references are blocked at Stop.
+3. **Suppressions table is separate from acceptance criteria.** Rule suppressions go in the `## Suppressions` table with rule_id + reason; acceptance criteria track functional deliverables. (Always — this is a structural separation, not an enforcement concern.)
+
+When all three flags are off, the task-doc skill may still offer the checkbox format as a *convention* (because the hook logs a `decision: "skipped"` entry for any violations it would have flagged) but must not present it as mandatory.
+
 **`.claude/skills/close-task/SKILL.md`** — finalizes task documents and promotes lessons to memory. Include frontmatter:
 ```yaml
 ---
@@ -328,6 +381,15 @@ user-invocable: true
 allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 ```
+
+The generated close-task skill MUST enforce these pre-close checks in order. Each check is conditional on its enforcement flag:
+
+1. **(`criteria_format`) All acceptance criteria resolved.** Every item in `## Acceptance Criteria` must be `[x]` or `[deferred:TASK-ID]`. Unchecked `[ ]` items block the close.
+2. **(`deferred_format`) Deferrals well-formed.** Every `[deferred:TASK-ID]` references a real task file or INDEX.md entry; no free-text deferrals in checkbox lines.
+3. **(`ledger`) Deferred-item ledger under threshold.** Sum all open `[deferred:TASK-ID]` lines across non-closed task docs, *excluding* the current task's own deferrals. Refuse to close the current task if the sum exceeds `manifest.governance.deferred_threshold` (default 3). If the ledger is intentionally high, the developer raises the threshold in the manifest — the skill does not override.
+4. **QC verdict must not be BLOCK.** Existing rule — always enforced regardless of flags.
+
+The `deferral-check` hook on Stop enforces checks 2 and 3 independently of the skill when their flags are on (and logs `decision: "skipped"` when off). The skill's role is to report what would block *before* requesting the close and give the developer a clear path to resolution.
 
 **Boilerplate skills** — Already copied by the scaffold script. These are: export, report, insights, critique (SKILL.md files) and evolve/changelog-spec.md. Do NOT regenerate these — they are already in place.
 
