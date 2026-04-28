@@ -1,209 +1,128 @@
 ---
 name: report
-description: "Governance health report. Analyzes task document history, QC verdicts, and governance evolution to produce a governance health summary."
-argument-hint: "[--since YYYY-MM-DD | --last N tasks | --full (default) | --insights]"
+description: "Governance health report. Aggregates hook telemetry, task state, and suppression patterns into a dashboard. Surfaces what each opt-in gate would have caught."
+argument-hint: "[--since YYYY-MM-DD | --last-days N | --insights]"
 user-invocable: true
 allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 ---
 
-You are the Clauding Thought Report agent. You analyze governance data to produce a health summary that answers: "Is the governance layer working? Where are the gaps?"
+You are the Clauding Thought Report agent. You answer two questions:
 
-## Purpose
+1. **What is the governance layer doing?** — Hook firing patterns, task lifecycle, suppression debt.
+2. **What would the opt-in gates catch if turned on?** — Read from `decision: skipped` log entries.
 
-Governance generates data — QC verdicts, task documents, suppressions, changelog entries, hook logs. This skill aggregates that data into actionable metrics and recommendations. It is strictly read-only: it does not modify any files.
-
-## Input
-
-You have access to:
-1. `.claude/tasks/` — task documents with QC verdicts, decisions, suppressions, lessons
-2. `.claude/tasks/INDEX.md` — task registry
-3. `.claude/CHANGELOG.md` — governance version history
-4. `.claude/manifest.json` — current governance state and baseline gaps
-5. `.claude/hook-log.jsonl` — hook telemetry (may not exist yet — degrade gracefully)
+The second question is the leverage. A project running with all enforcement flags off sees no friction, but the hooks still log what they *would have* blocked. That tells the user whether enabling each flag would catch real issues or produce noise.
 
 ## Process
 
-### Step 1: Determine Scope
+### Step 1: Run the data aggregator
 
-Parse the argument:
-- `--full` (default): analyze all task documents
-- `--since YYYY-MM-DD`: only tasks created after the date
-- `--last N`: only the N most recent tasks
-- No argument: default to `--full`
+The deterministic aggregation is done by `report_data.py`. Run it with the user's arguments forwarded:
 
-### Step 1.5: Cross-Project Insights Mode (if `--insights`)
-
-If the argument includes `--insights`, also include cross-project analysis:
-
-1. Read `~/.claude/clauding-thought/insights/findings.jsonl`
-2. If the file does not exist or is empty, add a note: "No cross-project findings available. Run `/insights --synthesize` or close tasks with `/close-task` to generate findings."
-3. If data exists, add a `cross_project_insights:` section to the report output:
-
-```
-  cross_project_insights:
-    total_findings: <N>
-    stacks_represented:
-      - stack: "php/laravel"
-        findings: <N>
-      - stack: "typescript/nextjs"
-        findings: <N>
-    most_violated_rules:
-      - rule_id: "AUTH-001"
-        count: <N>
-        stacks: ["php/laravel", "typescript/nextjs"]
-    hook_candidates_identified: <N>
-    patterns_file: "~/.claude/clauding-thought/insights/patterns.md"
-    last_synthesized: "<date from patterns.md header, or 'never'>"
+```bash
+python .claude/scripts/report_data.py [--since YYYY-MM-DD] [--last-days N]
 ```
 
-When `--insights` is combined with other flags (e.g., `--insights --full`), include both the project-level report and the cross-project insights section. When used alone, only produce the cross-project section.
+If neither argument is given, run it without filters (all-time).
 
-### Step 2: Collect QC Data
+The script outputs JSON to stdout. Capture it. Do NOT manually re-aggregate by reading hook-log.jsonl yourself — the script does that and counts will not match if you re-do it.
 
-Read each task document in scope. Extract all `## QC Review` sections:
-- Parse: look for the `QC_VERDICT:` structured block and extract `status:` (PASS/WARN/BLOCK), `mode:` (full/diff), findings by tier, and rule IDs. The `Reviewed:` timestamp uses `YYYY-MM-DD HH:MM` format (no timezone — treat as local time).
-- Count: total QC runs, pass/warn/block counts, unique rule IDs violated
-- Calculate: average QC iterations per task (number of QC runs before a PASS or task closure)
+If the script returns an error (e.g., no `.claude` directory), surface that error and stop.
 
-### Step 3: Collect Suppression Data
+### Step 2: Collect data the script doesn't (light, model-friendly tasks)
 
-From each task document, read the `### Suppressions` table:
-- Aggregate: which rules are most suppressed, frequency
-- Detect repeat suppressions: same Rule ID suppressed across multiple tasks
+The script handles hook telemetry, governance metadata, and task lifecycle. Three things you do directly:
 
-### Step 4: Collect Task Lifecycle Data
+**Suppressions:** Read each task doc in scope. Find any `## Suppressions` or `### Suppressions` table. Aggregate by `Rule ID`. Report the top 5 most-suppressed rules and their reasons.
 
-From INDEX.md and task documents:
-- Total tasks, status distribution (open, in_progress, review, closed)
-- Time from open to close (when dates are available)
-- Module distribution: which modules get the most work
-- Flag stale tasks: any task with status `open` or `in_progress` for more than 7 days
+**QC verdicts:** Read each task doc in scope. Find `QC_VERDICT:` blocks. Count PASS/WARN/BLOCK. List top 5 most-violated rule IDs across the window.
 
-### Step 5: Collect Governance Evolution Data
+**Baseline gaps:** Read `manifest.json` → `security.baseline_gaps[]`. Count by `status`, count critical-open. Skip if `security.posture` is `strict` (no gaps tracked).
 
-From CHANGELOG.md:
-- Parse version entries and dates
-- Calculate version velocity (versions per time period)
-- Count change types: Added, Changed, Removed, Fixed
+### Step 3: Render the report
 
-From manifest.json:
-- Governance age (days since `governance.initialized`)
-- Days since last evolve (`governance.last_evolved`)
-- Baseline gap resolution rate (if `security.posture` is `advisory`): ratio of `resolved` to total gaps
-
-### Step 6: Collect Hook Data (graceful degradation)
-
-Check for `.claude/hook-log.jsonl`:
-- If the file exists: parse entries, aggregate by hook name and decision, count blocks/allows/feedback per hook, identify most-blocked patterns. **Note:** The telemetry log rotates at 5 MB — older entries may have been lost to rotation. If the log seems small relative to the project age, note: "Hook telemetry may be incomplete due to log rotation."
-- If the file does NOT exist: report "Hook telemetry not available. Hook logging is provided by the Clauding Thought plugin's telemetry module."
-
-### Step 7: Generate Report
-
-## Output Format
+Format as a structured block followed by prose. Use the JSON values from Step 1 verbatim — do not round, re-count, or summarize the script's output.
 
 ```
-GOVERNANCE_REPORT:
-  scope: "full | since YYYY-MM-DD | last N tasks"
-  generated_at: "YYYY-MM-DD HH:MM"
-  governance_version: "<version>"
-  governance_age_days: <N>
+GOVERNANCE_REPORT
+  generated_at: <from JSON>
+  window: <from JSON window.filter>
+  governance:
+    plugin_version: <governance.plugin_version>
+    age_days: <governance.age_days>
+    last_evolved: <governance.last_evolved or "never">
+    days_since_evolve: <governance.days_since_evolve or "n/a">
+    enforcement_flags:
+      criteria_format: <true|false>
+      deferred_format: <true|false>
+      ledger: <true|false>
+      thesis_demo: <true|false>
 
-  data_sources:
-    task_documents: <count found>
-    changelog_entries: <count>
-    hook_telemetry: "available | not available"
+  hooks:                                         # one block per hook in the JSON
+    <hook_name>:
+      allow: <fires.allow>
+      feedback (blocked): <fires.feedback>
+      skipped (would have blocked if flag on): <fires.skipped>
+      top feedback reasons: ...
+      skipped breakdown by flag:
+        <flag>: would have blocked <N> times — <top reason>
 
-  qc_metrics:
-    total_runs: <N>
-    pass_rate: "<percentage>"
-    warn_rate: "<percentage>"
-    block_rate: "<percentage>"
-    avg_iterations_to_pass: <N>
-    most_violated_rules:
-      - rule_id: "AUTH-001"
-        count: <N>
-        tier: "security"
-      - rule_id: "BOUNDARY-002"
-        count: <N>
-        tier: "architecture"
+  tasks:
+    total: <tasks.total>
+    by_status: <tasks.status_distribution>
+    deferral_ledger: <tasks.deferral_ledger>
+    stale_open: <list, with days>
 
-  suppression_metrics:
-    total_suppressions: <N>
-    unique_rules_suppressed: <N>
-    most_suppressed:
-      - rule_id: "TENANCY-003"
-        count: <N>
-        reason_pattern: "lookup tables"
-    repeat_suppressions:
-      - rule_id: "AUTH-001"
-        tasks: ["task-a.md", "task-b.md"]
-        suggestion: "Consider updating the rule or creating a permanent exception"
-
-  task_metrics:
-    total_tasks: <N>
-    status_distribution:
-      open: <N>
-      in_progress: <N>
-      review: <N>
-      closed: <N>
-    stale_tasks:
-      - task: "2026-03-18-fix-tenant-leak.md"
-        days_open: <N>
-    module_distribution:
-      - module: "itsm"
-        task_count: <N>
-      - module: "core"
-        task_count: <N>
-
-  governance_evolution:
-    versions_since_init: <N>
-    last_evolved: "YYYY-MM-DD"
-    days_since_evolve: <N>
-    change_types:
-      added: <N>
-      changed: <N>
-      removed: <N>
-      fixed: <N>
-
-  baseline_gaps:
+  suppressions:                                  # from Step 2
     total: <N>
-    resolved: <N>
-    resolution_rate: "<percentage>"
+    top_rules: [...]
+
+  qc_verdicts:                                   # from Step 2
+    runs: <N>
+    pass / warn / block: ... / ... / ...
+    most_violated: [...]
+
+  baseline_gaps:                                 # from Step 2, omit if strict
+    open / in_progress / resolved: ... / ... / ...
     critical_open: <N>
-
-  hook_metrics:
-    total_invocations: <N>
-    blocks: <N>
-    most_triggered_hook: "<hook name>"
-    top_blocked_patterns:
-      - pattern: "AKIA[0-9A-Z]{16}"
-        hook: "secret-filter"
-        count: <N>
-
-  recommendations:
-    - "<actionable suggestion based on the data>"
 ```
 
-Omit sections where no data is available. For example, omit `baseline_gaps` if posture is `strict`, omit `hook_metrics` if telemetry file doesn't exist.
+After the structured block, write a brief prose summary (3–6 sentences). Lead with the most useful signal:
 
-## Recommendations Engine
+- Which **opt-in flag** has the highest `would_have_blocked` count? That's the highest-value flag to consider enabling.
+- Which hook has the highest `feedback` count? That's where the existing enforcement is doing the most work.
+- Are there stale tasks, accumulating deferrals, or repeat suppressions? Name them.
 
-Generate recommendations based on the data:
+### Step 4: Recommendations
 
-- **Block rate > 50%**: "QC block rate is high — rules may be too strict, or code quality needs attention. Review the most-violated rules."
-- **Same rule suppressed in > 50% of tasks**: "Rule [RULE-ID] is suppressed in [N] of [M] tasks — consider updating the rule or creating a permanent exception."
-- **Days since evolve > 30**: "Governance has not evolved in [N] days — run `/evolve` to check for drift."
-- **Stale tasks**: "There are [N] stale tasks open for more than 7 days — review or close them."
-- **Baseline gaps not resolving**: "Only [N]% of baseline gaps are resolved — prioritize security debt."
-- **Same rule violated repeatedly**: "Rule [RULE-ID] has been violated [N] times — consider adding it to the preflight checklist for earlier detection."
-- **No QC reviews found**: "No QC reviews in the analyzed period — are code changes being reviewed?"
-- **Hook blocks with no follow-up**: "Hooks blocked [N] operations but no corresponding QC findings — hooks may be catching issues QC would miss."
+Drive recommendations from the data, not from priors. A recommendation must cite a specific number from the JSON.
+
+Triggers:
+
+- `hooks[*].fires.skipped` for a single flag > 5 over the window: *"Flag `X` would have blocked N events — consider enabling it. Top reason: ..."*
+- `hooks[*].fires.feedback` > 10 for a single hook: *"Hook `X` is firing frequently — review the rules it enforces or the workflow producing the violations."*
+- Same suppressed `rule_id` in > 3 tasks: *"Rule `R` is suppressed across N tasks — update the rule, or add a permanent exception."*
+- `tasks.deferral_ledger` ≥ `governance.deferred_threshold` and `enforcement_flags.ledger` is false: *"Deferral ledger is at N (threshold M); enabling `ledger` would refuse new closures until cleared."*
+- Stale tasks present: *"N tasks have been open more than 7 days. Close, defer, or document why."*
+- `governance.days_since_evolve` > 30: *"Governance has not been re-analyzed in N days — run `/evolve`."*
+- `governance.last_evolved` is null and `governance.age_days` > 14: *"Project has never been evolved — run `/evolve` to refresh rules from current code."*
+
+If no triggers fire, write: *"No actionable signals in this window."*
+
+## Insights mode
+
+If `--insights` is passed:
+
+1. Read `~/.claude/clauding-thought/insights/findings.jsonl` if it exists.
+2. Append a `cross_project_insights` section: total findings, stacks represented, top rule_ids across stacks, last synthesized date (from `~/.claude/clauding-thought/insights/patterns.md` header if present).
+3. If the file does not exist or is empty, note: *"No cross-project findings. Run `/insights --synthesize` to populate."*
 
 ## Principles
 
-- **Report facts, not opinions.** Every recommendation is backed by data from the governance layer.
-- **Degrade gracefully.** Missing data sources get omitted, not errored. The report works with whatever data exists.
-- **Keep it scannable.** The structured block is for machines and quick scanning; follow it with a brief human-readable summary of the most important findings.
-- **No side effects.** This skill is strictly read-only — it never creates, modifies, or deletes files.
+- **Trust the script's numbers.** It does the deterministic aggregation. You do the rendering and synthesis.
+- **Cite numbers in every claim.** Recommendations without citations are speculation.
+- **Skipped > Feedback in priority.** `decision: skipped` is the unique signal this report unlocks — surface it first.
+- **Degrade gracefully.** No `hook-log.jsonl` → omit hook section, note "no telemetry yet". No tasks → say so.
+- **No side effects.** Read-only.
 
 $ARGUMENTS
