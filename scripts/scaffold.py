@@ -103,7 +103,7 @@ try:
         "secret-filter.py", "destructive-guard.py", "anti-rationalization.py",
         "evidence-check.py", "skill-reminder.py", "hook_telemetry.py",
         "task_doc.py", "deferral-check.py", "thesis-check.py",
-        "report_data.py"
+        "report_data.py", "rule-context.py"
     ]
     for script in hook_scripts:
         src = os.path.join(scripts_src, script)
@@ -180,6 +180,10 @@ try:
                             {
                                 "type": "command",
                                 "command": "python .claude/scripts/secret-filter.py"
+                            },
+                            {
+                                "type": "command",
+                                "command": "python .claude/scripts/rule-context.py"
                             }
                         ]
                     },

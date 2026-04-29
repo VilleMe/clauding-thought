@@ -167,14 +167,20 @@ The plugin ships three opt-in gates that enforce task-doc conventions. All defau
 
    **Dependency:** `thesis_demo` only fires on tasks that are "ready to close" — i.e., tasks whose `## Acceptance Criteria` section contains at least one checkbox and all checkboxes are `[x]` or `[deferred:TASK-ID]`. Tasks written as prose without a structured criteria section never trigger the thesis gate. If you want thesis enforcement and your project uses prose task docs, enable `criteria_format` as well so the author is nudged toward the checkbox structure.
 
+5. **Ambient rule context on edits (`governance.enforcement.rule_context`)**
+   > "Do you want a PreToolUse hook to re-emphasize relevant rule sections as `additionalContext` before each Edit/Write? Rules in `.claude/rules/` are auto-loaded once at session start; in long sessions they drift out of recency. This hook matches the file being edited against rule path globs and injects up to two most-specific matching sections (~200-400 tokens per edit). Never blocks. Useful for projects where conversational fixes between formal tasks tend to introduce convention violations."
+
+   **Cost:** every Edit/Write inside the project root pays a token tax. For a 50-edit session, expect ~10-20K extra tokens. When the flag is off, the hook still runs the matching and logs `decision: "skipped"` with which rules WOULD have been injected — so `/report` can show whether enabling it would surface useful content.
+
 Decision defaults if the user declines to answer or is unsure:
 - If the project has an existing `.claude/tasks/` directory with markdown checkboxes, suggest enabling `criteria_format`
 - Only enable `deferred_format` / `ledger` if the user explicitly confirms — these require discipline around every deferral being a tracked task
 - Only enable `thesis_demo` if the project ships user-visible features regularly. For internal/library projects, leave it off.
+- `rule_context` is the lowest-stakes flag — never blocks, just re-emphasizes rules. Recommend enabling it on projects with extensive `.claude/rules/` content where conversational fixes are common. For projects where rules are sparse or already always-loaded by virtue of short sessions, leave it off — the token cost is real.
 
-Record all four answers for Step 4a. Each becomes a boolean under `governance.enforcement.<name>` in `manifest.json`.
+Record all five answers for Step 4a. Each becomes a boolean under `governance.enforcement.<name>` in `manifest.json`.
 
-When all flags stay off, the hooks still run but log their findings as `decision: "skipped"` in `.claude/hook-log.jsonl`. The user can promote flags to true later by editing `manifest.json` directly or re-running `/init --update`.
+When all flags stay off, the hooks still run but log their findings as `decision: "skipped"` in `.claude/hook-log.jsonl`. Run `/report` to see what each disabled gate WOULD have caught — that's the validation signal for deciding whether to enable. Users can promote flags to true later by editing `manifest.json` directly or re-running `/init --update`.
 
 ## Step 3.7: DISCOVER — Rule Packs
 
@@ -254,7 +260,8 @@ Include the `governance` block:
       "criteria_format": false,
       "deferred_format": false,
       "ledger": false,
-      "thesis_demo": false
+      "thesis_demo": false,
+      "rule_context": false
     },
     "packs": [
       { "name": "<pack-name>", "version": "<version>", "applied": "<today>", "customized": false }

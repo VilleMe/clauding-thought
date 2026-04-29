@@ -79,6 +79,11 @@
               "type": "boolean",
               "default": false,
               "description": "When true, the thesis-check hook refuses to allow Stop on a ready-to-close task doc unless it contains a `## Thesis Demo` section with Claim, Script, Observable subsections AND a **Demonstrated:** timestamp within the last 24 hours. Tasks can opt out per-task with `no-user-observable-change: true` in frontmatter or a `## No User-Observable Change` section (intended for infrastructure/refactor work)."
+            },
+            "rule_context": {
+              "type": "boolean",
+              "default": false,
+              "description": "When true, the rule-context PreToolUse hook injects up to two matching rule sections as additionalContext before each Edit/Write. Re-emphasizes relevant rules at edit time so they don't drift to the back of context in long sessions. Never blocks. Costs ~200-400 tokens per edit. When false, the hook still runs the matching and logs which rules WOULD have been injected, so /report can show the would-have-fired data."
             }
           }
         },
