@@ -21,8 +21,9 @@ Claude Code ships rules (`.claude/rules/` with `paths:` scoping), auto-memory, s
 | No real-time secret or destructive-command guard on writes and shell | `secret-filter` and `destructive-guard` |
 | Nothing stops "tests pass" without a test run, or "the data is correct" without a check, or quiet dismissal of findings | `evidence-check`, `claim-guard`, `anti-rationalization` |
 | No way to know whether your hooks are working | A self-test that runs every hook on realistic input, and a report that says inert or compliant |
-| No per-task audit trail | Task docs with intent, scope, decisions, QC verdicts, lessons |
-| Rules drift from the code and bloat the context | `/evolve` re-analyzes, folds rule candidates from closed tasks into the rules, and keeps rule files scoped and small |
+| No per-task audit trail | Task docs with intent, scope, a thesis, decisions, QC verdicts, lessons |
+| Every gate can be green while the user sees no change | Each task states a user-visible claim and its observable; `/close-task` demonstrates it with the bundled `/verify` before closing, or the task opts out in writing |
+| Rules drift from the code and bloat the context | `/evolve` reads the telemetry (rule candidates from closed tasks, repeat suppressions, where the guards fire), folds what it finds into the rules, and keeps rule files scoped and small |
 
 ## Prerequisites
 
@@ -47,8 +48,8 @@ Then in the project:
 # ... plan first if preflight said so, then write code ...
 /qc                                    # review changes against the project's rules (read-only subagent)
 /qc-fix                                # or: review, fix only what the verdict names, re-review, max 3 cycles
-/close-task                            # record lessons, refuse on BLOCK
-/evolve                                # periodically: re-analyze, update rules, keep them scoped
+/close-task                            # demonstrate the thesis via /verify, record lessons, refuse on BLOCK
+/evolve                                # periodically: read telemetry, re-analyze, update rules, keep them scoped
 /clauding-thought:report               # what the governance layer is actually doing
 /clauding-thought:init --update        # after a plugin upgrade: refresh scripts, hooks, self-test
 ```
@@ -73,7 +74,7 @@ Then in the project:
 │   └── preflight/  qc/  qc-fix/  task-doc/  close-task/  evolve/    generated for this project
 ├── agents/
 │   └── qc-reviewer.md     the read-only subagent /qc runs in
-├── scripts/               hook scripts, their helpers, and the complexity scorer
+├── scripts/               hook scripts, their helpers, the complexity scorer, the telemetry aggregator
 └── tasks/                 INDEX.md plus one document per task
 ```
 
@@ -160,6 +161,10 @@ clauding-thought/
 ├── packs/                 rule packs
 └── schema/                manifest schema
 ```
+
+## Changes in 3.3
+
+Every task doc now carries a thesis: a user-visible claim, the observable that proves it, and a `Demonstrated:` line that stays empty until `/close-task` runs the bundled `/verify` skill against the observable and records the result with a timestamp. A task with no user-visible outcome says so in writing with `no-user-observable-change: true`. Close is refused when the thesis is missing or its demonstration fails, and the report shows how many recent tasks had a thesis, demonstrated it, or opted out. `/evolve` starts from telemetry: the aggregator is copied into projects again so the generated evolve skill can read rule candidates filed by closed tasks, where the guards keep firing and on which files, scope and thesis coverage, and rule-file sizes, and turn them into proposals through its normal approval flow.
 
 ## Changes in 3.2
 

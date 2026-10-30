@@ -150,6 +150,45 @@ def list_items(section_text):
 
 
 # --------------------------------------------------------------------------
+# Thesis section
+# --------------------------------------------------------------------------
+
+_OPT_OUT_RE = re.compile(r"no-user-observable-change[\s*_]*:[\s*_]*true\b", re.I)
+_OPT_OUT_HEADING_RE = re.compile(r"(?im)^#{2,3}\s+no\s+user[- ]observable\s+change\b")
+_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _labelled_value(section, label):
+    """Text after `**Label:**` (markdown bold tolerated) on its line, or ''."""
+    m = re.search(rf"(?im)^\s*(?:[-*+]\s+)?\**{re.escape(label)}\**\s*:\**\s*(.*)$", section)
+    return (m.group(1) or "").strip() if m else ""
+
+
+def thesis_status(text, heading="Thesis"):
+    """What a task doc declares about its user-visible outcome.
+
+    Returns {"opted_out", "present", "claim", "observable", "demonstrated"}:
+    opted_out when the doc carries `no-user-observable-change: true` or a
+    `## No User-Observable Change` section; present when the thesis section
+    exists; claim/observable when those labelled lines have text; demonstrated
+    when the `Demonstrated:` line carries a date.
+    """
+    out = {"opted_out": False, "present": False, "claim": False, "observable": False, "demonstrated": False}
+    if not text:
+        return out
+    if _OPT_OUT_RE.search(text[:2048]) or _OPT_OUT_HEADING_RE.search(text):
+        out["opted_out"] = True
+    section = strip_fenced_blocks(extract_section(text, heading))
+    if not section.strip():
+        return out
+    out["present"] = True
+    out["claim"] = bool(_labelled_value(section, "Claim"))
+    out["observable"] = bool(_labelled_value(section, "Observable"))
+    out["demonstrated"] = bool(_DATE_RE.search(_labelled_value(section, "Demonstrated")))
+    return out
+
+
+# --------------------------------------------------------------------------
 # Path globs (same vocabulary as rule `paths:` frontmatter)
 # --------------------------------------------------------------------------
 

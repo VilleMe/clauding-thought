@@ -33,6 +33,7 @@ HOOK_SCRIPTS = [
     "task_doc.py",
     "transcript.py",
     "complexity.py",
+    "report_data.py",  # the generated evolve skill reads telemetry through it
 ]
 
 # Scripts whose hook registrations this plugin owns (by file name).
@@ -45,7 +46,7 @@ PLUGIN_HOOK_SCRIPTS = {
 # Their registrations are removed and the files deleted from .claude/scripts/.
 RETIRED_SCRIPTS = {
     "skill-reminder.py", "rule-context.py", "deferral-check.py", "thesis-check.py",
-    "setup-user-dir.py", "report_data.py",
+    "setup-user-dir.py",
 }
 
 # Plugin-owned skills that earlier versions copied into projects. 3.1 ships

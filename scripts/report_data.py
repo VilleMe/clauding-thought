@@ -26,11 +26,12 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from task_doc import (  # noqa: E402
     extract_section, find_active_tasks, find_claude_dir, list_items, load_manifest,
-    task_heading, verification,
+    task_heading, thesis_status, verification,
 )
 
 STALE_DAYS = 7
 SCOPE_SAMPLE = 10
+CLOSED_STATUSES = ("closed", "done", "complete", "completed", "resolved", "merged")
 
 
 def parse_args():
@@ -84,7 +85,7 @@ def aggregate_hooks(claude_dir, since, until):
 
     considered = 0
     multiple_active = 0
-    by_hook = defaultdict(lambda: {"fires": Counter(), "reasons": Counter(),
+    by_hook = defaultdict(lambda: {"fires": Counter(), "reasons": Counter(), "files": Counter(),
                                    "first_seen": None, "last_seen": None})
     try:
         with open(log_path, "r", encoding="utf-8") as f:
@@ -103,9 +104,13 @@ def aggregate_hooks(claude_dir, since, until):
                 b = by_hook[e.get("hook", "unknown")]
                 decision = e.get("decision", "unknown")
                 b["fires"][decision] += 1
-                if decision in ("block", "feedback", "annotate") and e.get("reason"):
-                    b["reasons"][e["reason"]] += 1
-                if (e.get("context") or {}).get("multiple_active_tasks"):
+                ctx = e.get("context") or {}
+                if decision in ("block", "feedback", "annotate"):
+                    if e.get("reason"):
+                        b["reasons"][e["reason"]] += 1
+                    if ctx.get("file"):
+                        b["files"][ctx["file"]] += 1
+                if ctx.get("multiple_active_tasks"):
                     multiple_active += 1
                 if ts and (b["first_seen"] is None or ts < b["first_seen"]):
                     b["first_seen"] = ts
@@ -121,6 +126,7 @@ def aggregate_hooks(claude_dir, since, until):
             "name": name,
             "fires": dict(b["fires"]),
             "top_reasons": [{"reason": r, "count": c} for r, c in b["reasons"].most_common(5)],
+            "top_files": [{"file": f, "count": c} for f, c in b["files"].most_common(5)],
             "first_seen": b["first_seen"].isoformat() if b["first_seen"] else None,
             "last_seen": b["last_seen"].isoformat() if b["last_seen"] else None,
         })
@@ -225,8 +231,14 @@ def tasks_block(claude_dir, manifest, since, now):
     directory = (manifest.get("task_docs") or {}).get("directory") or "tasks"
     tasks_dir = os.path.join(claude_dir, directory)
     heading = task_heading(manifest, "scope", "Scope")
+    thesis_heading = task_heading(manifest, "thesis", "Thesis")
+    last_evolved = parse_iso((manifest.get("governance") or {}).get("last_evolved"))
     out = {"total": 0, "status_distribution": {}, "stale_open": [],
            "scope_coverage": {"with_scope": 0, "of": 0, "heading": heading},
+           "thesis_coverage": {"with_thesis": 0, "demonstrated": 0, "opted_out": 0, "of": 0,
+                               "heading": thesis_heading},
+           "rule_candidates": {"pending": 0, "since": last_evolved.date().isoformat() if last_evolved else None,
+                               "items": []},
            "active_tasks": len(find_active_tasks(claude_dir, manifest))}
     if not os.path.isdir(tasks_dir):
         return out
@@ -250,12 +262,24 @@ def tasks_block(claude_dir, manifest, since, now):
     out["scope_coverage"]["of"] = len(sample)
     out["scope_coverage"]["with_scope"] = sum(
         1 for _, _, text in sample if list_items(extract_section(text, heading)))
+    out["thesis_coverage"]["of"] = len(sample)
+    for _, _, text in sample:
+        ts = thesis_status(text, thesis_heading)
+        out["thesis_coverage"]["with_thesis"] += 1 if ts["present"] else 0
+        out["thesis_coverage"]["demonstrated"] += 1 if ts["demonstrated"] else 0
+        out["thesis_coverage"]["opted_out"] += 1 if ts["opted_out"] else 0
 
     for mtime, fname, text in docs:
-        if since is not None and mtime < since:
-            continue
         m = re.search(r"status[\s*_]*:[\s*_]*([A-Za-z][A-Za-z _-]*)", text[:2048], re.I)
         status = m.group(1).strip().lower().replace(" ", "_") if m else "unknown"
+        # Rule candidates filed by close-task in tasks closed since the last evolve.
+        if status in CLOSED_STATUSES and (last_evolved is None or mtime >= last_evolved):
+            items = list_items(extract_section(text, "Rule Candidates"))
+            if items:
+                out["rule_candidates"]["items"].append({"task": fname, "candidates": items[:10]})
+                out["rule_candidates"]["pending"] += len(items)
+        if since is not None and mtime < since:
+            continue
         statuses[status] += 1
         out["total"] += 1
         if status in ("open", "in_progress", "in-progress", "active"):

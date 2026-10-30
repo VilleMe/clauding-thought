@@ -8,7 +8,7 @@ Clauding Thought is a Claude Code plugin that generates a project-specific `.cla
 
 - `.claude-plugin/plugin.json`, `marketplace.json` — plugin manifest and marketplace entry; bump `version` in both on every release
 - `skills/init/SKILL.md` — the bootstrap skill, invoked as `/clauding-thought:init`; `skills/report/SKILL.md` — `/clauding-thought:report`. Both run scripts via `${CLAUDE_PLUGIN_ROOT}`
-- `scripts/` — Python 3, stdlib only: the six hook scripts, `scaffold.py`, `selftest.py`, `report_data.py`, `complexity.py` (copied into projects for the preflight skill), shared helpers `hook_telemetry.py`, `task_doc.py`, `transcript.py`, and `fixtures/transcript.jsonl`
+- `scripts/` — Python 3, stdlib only: the six hook scripts, `scaffold.py`, `selftest.py`, `report_data.py` and `complexity.py` (both copied into projects, for the evolve and preflight skills), shared helpers `hook_telemetry.py`, `task_doc.py`, `transcript.py`, and `fixtures/transcript.jsonl`
 - `templates/evolve/changelog-spec.md` — copied next to the generated evolve skill
 - `rules/` — rule templates with `{{placeholder}}` syntax, hydrated by the init skill into `.claude/rules/`
 - `patterns/archetype.md` — pattern template, hydrated once per detected archetype

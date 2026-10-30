@@ -28,7 +28,6 @@ Read each task doc in the window and gather:
 
 - **Suppressions:** every `## Suppressions` table, aggregated by Rule ID. Top 5 most-suppressed rules with their reasons.
 - **QC verdicts:** every `QC_VERDICT` block. Count PASS / WARN / BLOCK and list the top 5 most-violated rule IDs.
-- **Rule candidates:** every `## Rule Candidates` entry in closed tasks not yet folded into the rules (compare against `governance.last_evolved`).
 - **Baseline gaps:** `manifest.security.baseline_gaps`, counted by status, with the number of open critical gaps. Skip when posture is `strict`.
 
 ### Step 3: Render
@@ -59,6 +58,13 @@ GOVERNANCE_REPORT
     active tasks now: <active_tasks>
     multiple active tasks seen by scope-guard: <multiple_active_tasks_seen> times
 
+  thesis:                                    # from tasks.thesis_coverage, last 10 task docs
+    with a thesis section: <with_thesis> of <of>
+    demonstrated: <demonstrated>
+    opted out (no user-observable change): <opted_out>
+
+  rule_candidates_pending: <tasks.rule_candidates.pending> (since <tasks.rule_candidates.since or "init">)
+
   verification:
     data gates declared: <verification.data_gates>
     claim_guard mode: <verification.claim_guard>
@@ -84,8 +90,6 @@ GOVERNANCE_REPORT
     pass / warn / block: ... / ... / ...
     most_violated: [...]
 
-  rule_candidates_pending: <N>
-
   baseline_gaps:               # omit when posture is strict
     open / in_progress / resolved: ... / ... / ...
     critical_open: <N>
@@ -105,7 +109,8 @@ Every recommendation cites a number from the data.
 - A hook with `block` or `feedback` > 10 in the window: name the hook, say what it keeps catching, and ask whether the rule or the workflow should change.
 - The same suppressed rule in more than 3 tasks: update the rule or add a permanent exception via `/evolve`.
 - Stale open tasks: close, defer, or document why.
-- `rule_candidates_pending` > 0 or `days_since_evolve` > 30: run `/evolve`.
+- Thesis: `demonstrated` below half of `with_thesis` means tasks are closing without their demonstration; `opted_out` above half of `of` means the opt-out is being used as a default, and the report says so.
+- `tasks.rule_candidates.pending` > 0 or `days_since_evolve` > 30: run `/evolve`; its telemetry step reads the same aggregator output.
 
 If nothing triggers: "No actionable signals in this window."
 

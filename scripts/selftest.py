@@ -312,6 +312,30 @@ def complexity_rows(interpreter, fixture):
     return rows
 
 
+def thesis_row(interpreter, scripts_dir):
+    """task_doc.thesis_status must read the thesis section and the opt-out marker."""
+    code = (
+        "import sys; sys.path.insert(0, %r); from task_doc import thesis_status as t\n"
+        "full = '# T\\nstatus: open\\n\\n## Thesis\\n**Claim:** users can export invoices\\n"
+        "**Observable:** a PDF named invoice-1.pdf downloads\\n**Demonstrated:** 2026-10-30T10:00:00Z via /verify\\n'\n"
+        "blank = '# T\\n## Thesis\\n**Claim:** x\\n**Observable:** y\\n**Demonstrated:**\\n'\n"
+        "opt = '# T\\nno-user-observable-change: true\\n## Intent\\nrefactor\\n'\n"
+        "none = '# T\\n## Intent\\nx\\n'\n"
+        "a, b, c, d = t(full), t(blank), t(opt), t(none)\n"
+        "assert a['present'] and a['claim'] and a['observable'] and a['demonstrated'] and not a['opted_out'], a\n"
+        "assert b['present'] and not b['demonstrated'], b\n"
+        "assert c['opted_out'] and not c['present'], c\n"
+        "assert not d['present'] and not d['opted_out'], d\n"
+        "print('ok')\n"
+    ) % scripts_dir
+    try:
+        cp = subprocess.run([interpreter, "-c", code], capture_output=True, text=True, timeout=30)
+        ok = cp.returncode == 0 and "ok" in cp.stdout
+        return ("task_doc: thesis status parsing", ok, "" if ok else cp.stderr.strip()[-300:])
+    except (OSError, subprocess.SubprocessError) as e:
+        return ("task_doc: thesis status parsing", False, str(e))
+
+
 def helpers_row(interpreter, scripts_dir):
     code = "import sys; sys.path.insert(0, %r); import %s" % (scripts_dir, ", ".join(HELPERS))
     try:
@@ -383,6 +407,8 @@ def main():
         for name, ok, detail in registration_rows(settings, scripts_present):
             results.append({"name": name, "ok": ok, "detail": detail})
         name, ok, detail = helpers_row(interpreter, scripts_dir)
+        results.append({"name": name, "ok": ok, "detail": detail})
+        name, ok, detail = thesis_row(interpreter, scripts_dir)
         results.append({"name": name, "ok": ok, "detail": detail})
         if real_transcript:
             name, ok, detail = real_transcript_row(interpreter, scripts_dir, real_transcript)

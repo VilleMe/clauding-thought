@@ -38,6 +38,7 @@ If the scaffold output shows `"mode": "update"`, follow its `next_steps` list an
 - Report what was refreshed, the retired files, and the self-test summary. STOP.
 
 - If `.claude/agents/qc-reviewer.md` or `.claude/skills/qc-fix/SKILL.md` is missing (projects scaffolded before 3.2), generate them per 4c and 4h, and add `context: fork`, `agent: qc-reviewer`, `background: false` to the existing qc skill's frontmatter if absent. If the manifest has no `task_docs.complexity`, leave it absent; the scorer uses its defaults.
+- If the task-doc skill does not write the thesis section, or the close-task skill does not run the thesis check, or the evolve skill has no telemetry step (projects scaffolded before 3.3): regenerate those skills per 4c, preserving the project's customisations. Existing task docs are not edited; one without a thesis section is handled by close-task when it closes.
 
 Do NOT re-analyze. Do NOT touch preflight, evolve, close-task, rules, or patterns beyond the items above.
 
@@ -274,6 +275,18 @@ allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ```
 It re-runs Steps 1-3, diffs against the stored manifest, reads `## Rule Candidates` entries from task docs closed since `last_evolved`, proposes rule and pattern changes, and on acceptance updates the files, `governance.version`, `last_evolved`, and the changelog per `skills/evolve/changelog-spec.md`. Pack sections between `<!-- pack:... -->` markers are updated only when not customized.
 
+It MUST include a **telemetry** step before proposing anything. Run the aggregator for the window since the last evolve:
+```bash
+python .claude/scripts/report_data.py --since <governance.last_evolved or the initialized date>
+```
+and read from its output: `tasks.rule_candidates.items` (lessons that `/close-task` filed as rule candidates since the last evolve), `hooks[].top_files` and `top_reasons` (where the guards keep firing), `tasks.scope_coverage` and `tasks.thesis_coverage`, `verification.data_gates`, and `rules` (sizes and scoping). Then read the `## Suppressions` tables of the task docs in the window. Turn these into proposals through the same approval flow as drift, each citing its evidence:
+- a rule candidate → a new or amended rule section in the right tier, with the wording the task proposed;
+- the same rule suppressed in three or more tasks → relax or clarify that rule, or record a permanent exception in it;
+- a path that `scope-guard` keeps denying across tasks → propose it for the task-doc skill's scope suggestions or as a module boundary;
+- `claim-guard` annotations with no data gates declared → propose `verification.gates` entries for the checks the project already runs;
+- any rule file the `rules` block shows as unscoped or over 12 KB → the rule-hygiene proposals below.
+After the user accepts, set `governance.last_evolved` to today so the next run starts from here.
+
 It MUST also include a **rule hygiene** step: for each `.claude/rules/*.md`, report its size and whether it has `paths:` frontmatter. Propose adding `paths:` (with globs from the current Step 1 analysis) to any file that lacks it other than `security.md`, splitting any file over 12 KB into scoped files by archetype (for example `rules/frontend.md` with the frontend globs), and moving narrative prose into pattern files. Before offering a frontmatter change, check that it parses as YAML (a `paths:` list of quoted strings) and that each glob matches at least one file in the project tree. A malformed frontmatter makes a rule file never load, which is worse than an unscoped one.
 
 **`task-doc`** — task document lifecycle. Frontmatter:
@@ -289,14 +302,21 @@ allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 New task docs go in `.claude/<task_docs.directory>/YYYY-MM-DD-slug.md` with `status: open` near the top and these sections, in this order, using the heading names from `task_docs.headings` for scope and thesis:
 - `## Intent`
 - `## <scope heading>` — one path glob per line, as a markdown list, naming the files this task may write to (for example `- src/billing/**`). The `scope-guard` hook denies writes outside this list while the task is active, and the denial tells the model to either log the discovery here under Implementation or extend this list as a visible decision. Preflight proposes the initial globs.
+- `## <thesis heading>` — three labelled lines:
+  ```markdown
+  **Claim:** <one sentence, from the user's point of view, that is false until this task ships>
+  **Observable:** <the exact output, screen, row, or response that shows the claim is true>
+  **Demonstrated:**
+  ```
+  `Demonstrated:` stays empty until `/close-task` runs the demonstration. A task with no user-visible outcome (a refactor, a dependency bump, tooling) writes `no-user-observable-change: true` on its own line near the top instead of this section, with one sentence under Intent saying why.
 - `## Plan`
 - `## Implementation` — running log of decisions, discoveries, and files changed
-- `## QC` — verdicts appended by `/qc`
+- `## QC` — verdicts appended by `/qc` and `/qc-fix`
 - `## Suppressions` — table: Rule ID, Reason
 - `## Lessons`
 - `## Closure`
 
-Register the task in `<task_docs.directory>/INDEX.md`. On `update`, append to Implementation and never rewrite the scope list silently.
+Register the task in `<task_docs.directory>/INDEX.md`. On `update`, append to Implementation and never rewrite the scope list or the thesis claim silently.
 
 **`close-task`** — finalization. Frontmatter:
 ```yaml
@@ -308,7 +328,15 @@ user-invocable: true
 allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 ```
-Pre-close checks: the latest QC verdict is not BLOCK; the Implementation section is not empty; every Suppressions row has a reason. Then: record the commit reference, write `## Lessons`, add any lesson that should become a permanent rule under `## Rule Candidates` (tier, proposed wording), set `status: closed`, update the task index.
+Pre-close checks, in order:
+1. The latest QC verdict in `## QC` is not BLOCK.
+2. The Implementation section is not empty, and every Suppressions row has a reason.
+3. **The thesis is demonstrated.** If the doc carries `no-user-observable-change: true`, skip this check and say so. Otherwise read the `## <thesis heading>` section:
+   - If it is missing, or Claim or Observable is empty: refuse to close. Ask the author for the claim and the observable, or for the opt-out line with a reason.
+   - If `Demonstrated:` is empty: invoke the bundled `/verify` skill with the Claim as what to confirm and the Observable as the acceptance criterion. If it confirms the observable, write `**Demonstrated:** <ISO 8601 timestamp> via /verify: <one line on what was observed>` into the section. If it cannot confirm it, refuse to close and report exactly what differed from the Observable, without softening it.
+   - If `Demonstrated:` already carries a date, accept it.
+   Never fill in `Demonstrated:` without a run that showed the Observable.
+Then: record the commit reference, write `## Lessons`, add any lesson that should become a permanent rule under `## Rule Candidates` as a markdown list (one item per candidate: tier, proposed wording, the task that motivated it), set `status: closed`, update the task index.
 
 ### 4d. Pattern files
 
