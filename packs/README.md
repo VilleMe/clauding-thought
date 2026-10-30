@@ -1,6 +1,6 @@
 # Rule Packs
 
-Rule packs are pre-built rule sets that can be merged into a project's `.claude/` governance layer during `/init` or applied later via `/evolve`.
+Rule packs are pre-built rule sets that can be merged into a project's `.claude/` governance layer during `/clauding-thought:init` or applied later via `/evolve`.
 
 ## Pack Structure
 
@@ -65,7 +65,7 @@ Keep rule content specific and actionable. Reference OWASP, CWE, or other standa
 
 ## Merge Strategy
 
-During `/init` or `/evolve`, pack rules are inserted into the target rule file between section markers:
+During `/clauding-thought:init` or `/evolve`, pack rules are inserted into the target rule file between section markers:
 
 ```markdown
 <!-- pack:my-pack:my-rule:start -->
@@ -83,7 +83,7 @@ This allows `/evolve` to detect whether pack sections have been customized (cont
 
 ## Stack Filtering
 
-The `stack_filter` object controls when a pack is offered during `/init`:
+The `stack_filter` object controls when a pack is offered during `/clauding-thought:init`:
 
 - If `stack_filter` is omitted or empty, the pack applies to all projects
 - If `language` is non-empty, the project must use at least one listed language
@@ -96,5 +96,5 @@ The `stack_filter` object controls when a pack is offered during `/init`:
 1. **Be specific.** Reference CWE IDs, OWASP categories, or framework docs.
 2. **Keep rules actionable.** Each rule should describe what to check and what "good" looks like.
 3. **Use severity wisely.** `error` = must fix before merge. `warning` = should fix. `info` = nice to know.
-4. **Test with a real project.** Run `/init` with your pack on a sample codebase.
+4. **Test with a real project.** Run `/clauding-thought:init` with your pack on a sample codebase.
 5. **Version bumps:** MAJOR for removed/restructured rules, MINOR for new rules, PATCH for wording tweaks.

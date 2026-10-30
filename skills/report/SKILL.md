@@ -1,24 +1,24 @@
 ---
 name: report
-description: "Governance health report. Aggregates hook telemetry, task state, suppressions, and QC verdicts into one dashboard."
+description: "Governance health report. Aggregates hook telemetry, the hook self-test, task state, scope coverage, suppressions, and QC verdicts into one dashboard, and says whether each hook is proven to fire."
 argument-hint: "[--since YYYY-MM-DD | --last-days N]"
 user-invocable: true
 allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 ---
 
-You are the Clauding Thought Report agent. You answer one question: **what is the governance layer actually doing?** Which hooks fire, which never do, which tasks are stale, which rules keep being suppressed.
+You are the Clauding Thought Report agent. You answer one question: **what is the governance layer actually doing?** Which hooks fire, which never do and whether that is compliance or a hook that cannot see what it should, which tasks are stale, which rules keep being suppressed.
 
 ## Process
 
 ### Step 1: Run the aggregator
 
-The deterministic aggregation is done by a script. Run it with the user's arguments forwarded (on macOS or Linux the interpreter may be `python3`):
+The deterministic aggregation is done by a script in the plugin. Run it exactly as written, from wherever the session is, without changing directory first, with the user's window arguments forwarded (use `python3` on macOS and Linux if `python` is not on the PATH):
 
 ```bash
-python .claude/scripts/report_data.py [--since YYYY-MM-DD] [--last-days N]
+python "${CLAUDE_PLUGIN_ROOT}/scripts/report_data.py" --project "${CLAUDE_PROJECT_DIR}" [--since YYYY-MM-DD] [--last-days N]
 ```
 
-Without arguments it reports all-time. It prints JSON. Do NOT re-aggregate `hook-log.jsonl` yourself; the script's numbers are the numbers.
+Without window arguments it reports all-time. It prints JSON, including `claude_dir`, the governance directory it read; confirm that is this project's before going on. Do NOT re-aggregate `hook-log.jsonl` yourself; the script's numbers are the numbers.
 
 If the script reports an error (for example no `.claude/` directory), surface it and stop.
 
@@ -44,12 +44,25 @@ GOVERNANCE_REPORT
     last_evolved: <governance.last_evolved or "never">
     days_since_evolve: <governance.days_since_evolve or "n/a">
 
+  self_test: <selftest.status> <selftest.passed>/<selftest.total> on <selftest.ran_at>   # or "never run"
+
   hooks:                       # one block per hook in the JSON
     <hook_name>:
       allow: <fires.allow>
       block: <fires.block>           # PreToolUse denials
-      feedback: <fires.feedback>     # Stop-hook pushback
+      feedback: <fires.feedback>     # Stop-hook push-back
+      annotate: <fires.annotate>     # claim-guard notes
       top reasons: ...
+
+  scope:
+    section present in <scope_coverage.with_scope> of the last <scope_coverage.of> task docs (heading "<scope_coverage.heading>")
+    active tasks now: <active_tasks>
+    multiple active tasks seen by scope-guard: <multiple_active_tasks_seen> times
+
+  verification:
+    data gates declared: <verification.data_gates>
+    claim_guard mode: <verification.claim_guard>
+    llm_judge: <verification.llm_judge>     # its interventions show in the session, not in this log
 
   tasks:
     total: <tasks.total>
@@ -72,14 +85,17 @@ GOVERNANCE_REPORT
     critical_open: <N>
 ```
 
-Then 3-6 sentences of prose. Lead with the most useful signal: a hook with zero interventions over a long window is either perfect compliance or a hook that is not seeing what it should, and the report should say which it suspects. Name stale tasks and repeat suppressions.
+Then 3-6 sentences of prose. Lead with the most useful signal. A hook with zero interventions over a long window and a passing self-test is compliance; with a failed or missing self-test it is inert, and the report says which. Name stale tasks and repeat suppressions.
 
 ### Step 4: Recommendations
 
 Every recommendation cites a number from the data.
 
+- Self-test never run, failed, or older than the plugin version: run `/clauding-thought:init --update`.
+- Scope section present in fewer than half of the last 10 task docs: `scope-guard` cannot fire for those tasks; regenerate the task-doc skill (`/clauding-thought:init --update` does this) or add the section by hand.
+- `multiple_active_tasks_seen` > 0: more than one task doc is open at once, so scope-guard is reading the newest one; close or pause the others.
+- No data gates declared and `claim-guard` annotated more than 3 times: add the check that would prove those claims to `verification.gates` with `kind: "data"`.
 - A hook with `block` or `feedback` > 10 in the window: name the hook, say what it keeps catching, and ask whether the rule or the workflow should change.
-- A Stop hook with 0 `feedback` over more than 200 fires: say so explicitly; suggest checking that `last_assistant_message` is reaching it.
 - The same suppressed rule in more than 3 tasks: update the rule or add a permanent exception via `/evolve`.
 - Stale open tasks: close, defer, or document why.
 - `rule_candidates_pending` > 0 or `days_since_evolve` > 30: run `/evolve`.

@@ -1,27 +1,20 @@
 #!/usr/bin/env python3
-"""Stop hook — refuses "tests pass" / "build succeeds" claims with no evidence.
+"""Stop hook: refuses "tests pass" / "build succeeds" claims with no evidence.
 
-Input contract (Claude Code hooks reference): a Stop hook receives
-`last_assistant_message` (the final response text), `transcript_path` (the
-session's JSONL transcript), and `stop_hook_active`.
+Reference it reads: the transcript's tool results in the last N turns
+(`verification.claim_window_turns`, default 1). Evidence is output matching a
+built-in test-runner or build-tool success pattern, or any gate's
+`success_pattern` declared in `manifest.verification.gates`.
 
-Behaviour: if the final response claims success, the hook scans the tool
-results of the CURRENT turn in the transcript for test-runner or build-tool
-success output. If none is found it exits 2 with feedback, and Claude Code
-continues the turn with that feedback. When `stop_hook_active` is set the
-hook allows, so it cannot loop.
-
-Transcript shape relied on (tolerant of extra fields): one JSON object per
-line; `type: "user"` entries whose `message.content` is a plain string are
-human prompts (turn boundaries); `type: "user"` entries whose content is a
-list of `tool_result` blocks carry tool output, as a string or as a list of
-`text` blocks.
+Pushes back with exit 2 once per turn (honours `stop_hook_active`); Claude
+Code then continues with the feedback. Fail-open on any error.
 """
-import sys, json, re, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hook_telemetry import TelemetryLogger
+import json
+import os
+import re
+import sys
 
-MAX_TAIL_BYTES = 8 * 1024 * 1024  # only the tail of a very large transcript is read
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 CLAIM_RE = re.compile(
     r"(all\s+tests?\s+pass|tests?\s+(are\s+|now\s+)?pass(ing|ed)?\b|build\s+succeed|build\s+pass"
@@ -64,65 +57,20 @@ EVIDENCE_RE = re.compile("|".join([
     r"^(Exit code:?\s*0|exit status 0)\s*$",
 ]), re.I | re.M)
 
-
-def tool_output_of_current_turn(transcript_path):
-    """Concatenate tool-result text from the current turn, newest entry first."""
-    if not transcript_path or not os.path.isfile(transcript_path):
-        return None
-    try:
-        size = os.path.getsize(transcript_path)
-        with open(transcript_path, "rb") as fh:
-            if size > MAX_TAIL_BYTES:
-                fh.seek(size - MAX_TAIL_BYTES)
-                fh.readline()  # drop the partial line
-            raw = fh.read().decode("utf-8", errors="replace")
-    except OSError:
-        return None
-
-    chunks = []
-    for line in reversed(raw.splitlines()):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except ValueError:
-            continue
-        if entry.get("type") != "user":
-            continue
-        message = entry.get("message") or {}
-        content = message.get("content")
-        if isinstance(content, str):
-            break  # human prompt: start of the current turn
-        if not isinstance(content, list):
-            continue
-        saw_tool_result = False
-        for block in content:
-            if not isinstance(block, dict) or block.get("type") != "tool_result":
-                continue
-            saw_tool_result = True
-            inner = block.get("content")
-            if isinstance(inner, str):
-                chunks.append(inner)
-            elif isinstance(inner, list):
-                for part in inner:
-                    if isinstance(part, dict) and part.get("type") == "text":
-                        chunks.append(part.get("text") or "")
-        if not saw_tool_result:
-            break  # a human prompt written as text blocks
-    return "\n".join(chunks)
-
-
 try:
     data = json.load(sys.stdin)
 except (json.JSONDecodeError, ValueError):
     sys.exit(0)
 
 try:
-    logger = TelemetryLogger("evidence-check", "Stop")
+    from hook_telemetry import TelemetryLogger
+    from task_doc import find_claude_dir, load_manifest, strip_code_and_quotes, verification
+    from transcript import tool_results_in_window
+
+    logger = TelemetryLogger("evidence-check", "Stop", hook_input=data)
 
     if data.get("stop_hook_active"):
-        logger.log("allow", reason="stop_hook_active — already continued once this turn")
+        logger.log("allow", reason="stop_hook_active")
         sys.exit(0)
 
     response = data.get("last_assistant_message") or data.get("response") or ""
@@ -130,29 +78,38 @@ try:
         logger.log("allow")
         sys.exit(0)
 
-    claim = CLAIM_RE.search(response)
+    claim = CLAIM_RE.search(strip_code_and_quotes(response) or "")
     if not claim:
         logger.log("allow")
         sys.exit(0)
 
-    output = tool_output_of_current_turn(data.get("transcript_path", ""))
+    ver = verification(load_manifest(find_claude_dir(data.get("cwd"))))
+    window = ver.get("claim_window_turns") or 1
+
+    output = tool_results_in_window(data.get("transcript_path", ""), window)
     if output is None:
-        # No transcript to check against: cannot judge, so do not block.
         logger.log("allow", reason="transcript unavailable",
-                   context={"matched_phrase": claim.group(0)[:200]})
+                   context={"claim": claim.group(0)[:120]})
         sys.exit(0)
 
     if EVIDENCE_RE.search(output):
-        logger.log("allow")
+        logger.log("allow", reason="evidence in window")
         sys.exit(0)
+    for g in ver.get("gates") or []:
+        try:
+            if isinstance(g, dict) and g.get("success_pattern") and \
+                    re.search(g["success_pattern"], output, re.I | re.M):
+                logger.log("allow", reason="gate in window", context={"gate": g.get("name", "")})
+                sys.exit(0)
+        except re.error:
+            continue
 
-    logger.log("feedback",
-               reason="Success claim without test/build output in this turn",
-               context={"matched_phrase": claim.group(0)[:200]})
+    logger.log("feedback", reason="success claim without test/build output",
+               context={"claim": claim.group(0)[:120]})
     print(
         "You claimed tests pass or the build succeeds, but no test or build output "
-        "appears in this turn's tool results. Run the actual command and quote its "
-        "result before claiming success.",
+        f"appears in the tool results of the last {window} turn(s). Run the actual "
+        "command and quote its result before claiming success.",
         file=sys.stderr
     )
     sys.exit(2)

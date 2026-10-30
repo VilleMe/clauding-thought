@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""PreToolUse hook for Write/Edit — denies writes that contain hardcoded secrets.
+"""PreToolUse hook for Write, Edit, MultiEdit, NotebookEdit: denies writes that
+contain hardcoded secrets.
 
 Output contract (Claude Code hooks reference): a PreToolUse hook denies a tool
 call by printing JSON with hookSpecificOutput.permissionDecision = "deny".
 Exit 0 with empty stdout allows. Any unexpected error fails open.
 """
-import sys, json, re, os
+import json
+import os
+import re
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from hook_telemetry import TelemetryLogger
 
 try:
     data = json.load(sys.stdin)
@@ -15,18 +19,25 @@ except (json.JSONDecodeError, ValueError):
     sys.exit(0)
 
 try:
-    logger = TelemetryLogger("secret-filter", "PreToolUse", data.get("tool_name", "Write"))
+    from hook_telemetry import TelemetryLogger
 
-    ti = data.get("tool_input", {}) or {}
-    content = ti.get("content", "") or ti.get("new_string", "") or ""
+    tool = data.get("tool_name", "Write")
+    ti = data.get("tool_input") or {}
+    logger = TelemetryLogger("secret-filter", "PreToolUse", tool, hook_input=data)
+
+    # Write: content. Edit: new_string. NotebookEdit: new_source. MultiEdit: edits[].new_string
+    pieces = [ti.get("content"), ti.get("new_string"), ti.get("new_source")]
+    for edit in ti.get("edits") or []:
+        if isinstance(edit, dict):
+            pieces.append(edit.get("new_string"))
+    content = "\n".join(p for p in pieces if isinstance(p, str) and p)
 
     if not content:
         logger.log("allow")
         sys.exit(0)
 
     def deny(reason, pattern_name=""):
-        logger.log("block", reason=reason, pattern=pattern_name,
-                   context={"tool": data.get("tool_name", ""), "file_path": ti.get("file_path", "")})
+        logger.log("block", reason=reason, pattern=pattern_name)
         print(json.dumps({
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",

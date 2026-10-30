@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Shared telemetry logger for Clauding Thought hook scripts.
 
-Writes JSONL entries to <project>/.claude/hook-log.jsonl.
-All operations are fail-open: logging errors are silently swallowed
-so they never interfere with hook decisions.
+Writes JSONL entries to <project>/.claude/hook-log.jsonl. Every entry carries
+the hook name, event, decision, and duration; when the hook input is given,
+also a short session id and, for file tools, the project-relative path. Those
+two fields let /report and /evolve see which files rules fire on.
+
+All operations are fail-open: logging errors are silently swallowed so they
+never interfere with hook decisions.
 """
 import json
 import os
@@ -15,19 +19,21 @@ ROTATION_SUFFIX = ".1.jsonl"
 
 
 class TelemetryLogger:
-    def __init__(self, hook_name, event, matcher=""):
+    def __init__(self, hook_name, event, matcher="", hook_input=None):
         self.hook_name = hook_name
         self.event = event
         self.matcher = matcher
         self.start_time = time.monotonic()
-        self._log_dir = self._find_log_dir()
+        start = hook_input.get("cwd") if isinstance(hook_input, dict) else None
+        self._log_dir = self._find_log_dir(start)
+        self.base = self._base_context(hook_input)
 
     @staticmethod
-    def _find_log_dir():
-        """Locate .claude/ by walking up from cwd to find the nearest one."""
+    def _find_log_dir(start=None):
+        """Locate .claude/ by walking up from the hook's cwd (or the process cwd)."""
         try:
-            current = os.getcwd()
-            for _ in range(10):  # limit depth to avoid infinite loop
+            current = start if start and os.path.isdir(start) else os.getcwd()
+            for _ in range(10):
                 claude_dir = os.path.join(current, ".claude")
                 if os.path.isdir(claude_dir):
                     return claude_dir
@@ -38,6 +44,29 @@ class TelemetryLogger:
         except Exception:
             pass
         return None
+
+    def _base_context(self, hook_input):
+        base = {}
+        try:
+            if not isinstance(hook_input, dict):
+                return base
+            sid = hook_input.get("session_id")
+            if isinstance(sid, str) and sid:
+                base["session"] = sid[:8]
+            ti = hook_input.get("tool_input") or {}
+            path = ti.get("file_path") or ti.get("notebook_path") if isinstance(ti, dict) else None
+            if isinstance(path, str) and path and self._log_dir:
+                root = os.path.dirname(self._log_dir)
+                try:
+                    rel = os.path.relpath(os.path.abspath(path), root)
+                    if not rel.startswith(".."):
+                        path = rel
+                except ValueError:
+                    pass
+                base["file"] = path.replace("\\", "/")
+        except Exception:
+            pass
+        return base
 
     def log(self, decision, reason=None, pattern=None, context=None):
         """Write a log entry. Never raises."""
@@ -57,8 +86,11 @@ class TelemetryLogger:
                 entry["reason"] = reason
             if pattern:
                 entry["pattern"] = pattern
+            merged = dict(self.base)
             if context:
-                entry["context"] = context
+                merged.update(context)
+            if merged:
+                entry["context"] = merged
 
             log_path = os.path.join(self._log_dir, "hook-log.jsonl")
             self._rotate_if_needed(log_path)
@@ -68,7 +100,6 @@ class TelemetryLogger:
             pass  # fail-open: never interfere with hook decision
 
     def _rotate_if_needed(self, log_path):
-        """Rotate log file if it exceeds MAX_LOG_SIZE."""
         try:
             if os.path.exists(log_path) and os.path.getsize(log_path) > MAX_LOG_SIZE:
                 rotated = log_path.replace(".jsonl", ROTATION_SUFFIX)
@@ -76,4 +107,4 @@ class TelemetryLogger:
                     os.remove(rotated)
                 os.rename(log_path, rotated)
         except Exception:
-            pass  # fail-open
+            pass

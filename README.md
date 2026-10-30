@@ -2,35 +2,37 @@
 
 **Project-specific governance for Claude Code, generated from your codebase.**
 
-Clauding Thought is a Claude Code plugin. Run `/init` in a project and it reads the code, works out the stack, the tenancy model, the authorization pattern, the module boundaries and the conventions, and writes a `.claude/` governance layer that fits that project: a manifest, path-scoped rule files, pattern files with real examples, and a small set of skills for the task loop. It also installs four hooks that catch things Claude Code does not catch on its own.
+Clauding Thought is a Claude Code plugin. Run `/clauding-thought:init` in a project and it reads the code, works out the stack, the tenancy model, the authorization pattern, the module boundaries and the conventions, and writes a `.claude/` governance layer that fits that project: a manifest, path-scoped rule files, pattern files with real examples, and a small set of skills for the task loop. It also installs six hooks that catch things Claude Code does not catch on its own, and a self-test that proves each hook fires.
 
 It is stack-agnostic and project-agnostic. Nothing in this repository is specific to any one codebase; every rule a project ends up with was extracted from that project.
 
 ## What Claude Code already does, and what this adds
 
-Claude Code ships rules (`.claude/rules/` with `paths:` scoping), auto-memory, skills, hooks, `/init` for a starter `CLAUDE.md`, and `/code-review` and `/security-review`. Clauding Thought builds on those rather than replacing them. What it adds:
+Claude Code ships rules (`.claude/rules/` with `paths:` scoping), auto-memory, skills, hooks, `/init` for a starter `CLAUDE.md`, and `/code-review`, `/security-review`, `/verify`. Clauding Thought builds on those rather than replacing them. What it adds:
 
 | Gap in Claude Code | What Clauding Thought does |
 |---|---|
-| `/init` writes a generic CLAUDE.md | Deep analysis into a manifest: tenancy, auth, boundaries, conventions, archetypes |
+| `/init` writes a generic CLAUDE.md | Deep analysis into a manifest: tenancy, auth, boundaries, conventions, archetypes, verification gates |
 | Rules are hand-written | Rule files hydrated from the codebase, with `paths:` frontmatter so they load only when relevant |
-| No notion of "how a controller looks here" | One pattern file per archetype, canonical example copied from the project |
+| No notion of "how a handler looks here" | One pattern file per archetype, canonical example copied from the project |
 | Review is generic | `/qc` checks the project's own declared rules, with severity tiers and a suppressions table |
-| No real-time secret or destructive-command guard on writes and shell | `secret-filter` and `destructive-guard` PreToolUse hooks |
-| Nothing stops "tests pass" without a test run, or quiet dismissal of findings | `evidence-check` and `anti-rationalization` Stop hooks |
+| Nothing stops a task from quietly touching files it never declared | `scope-guard` denies writes outside the active task's declared scope |
+| No real-time secret or destructive-command guard on writes and shell | `secret-filter` and `destructive-guard` |
+| Nothing stops "tests pass" without a test run, or "the data is correct" without a check, or quiet dismissal of findings | `evidence-check`, `claim-guard`, `anti-rationalization` |
+| No way to know whether your hooks are working | A self-test that runs every hook on realistic input, and a report that says inert or compliant |
 | No per-task audit trail | Task docs with intent, scope, decisions, QC verdicts, lessons |
-| Rules drift from the code | `/evolve` re-analyzes and folds rule candidates from closed tasks into the rules |
+| Rules drift from the code and bloat the context | `/evolve` re-analyzes, folds rule candidates from closed tasks into the rules, and keeps rule files scoped and small |
 
 ## Prerequisites
 
 - Claude Code with plugin support
 - Python 3 on the PATH as `python` (Windows) or `python3` (macOS, Linux); the scaffold picks the right name
-- The analysis in `/init` reads a lot of files. A high-throughput plan is recommended.
+- The analysis in the init skill reads a lot of files. A high-throughput plan is recommended.
 
 ## Quick start
 
 ```bash
-# Add the marketplace and install the plugin (from an interactive claude session)
+# From an interactive claude session: add the marketplace and install the plugin
 /plugin marketplace add <path-or-url-to-this-repo>
 /plugin install clauding-thought@clauding-thought
 ```
@@ -38,25 +40,26 @@ Claude Code ships rules (`.claude/rules/` with `paths:` scoping), auto-memory, s
 Then in the project:
 
 ```
-/init                                  # analyze the codebase, generate .claude/
-/preflight "Add invoice export"        # context brief before coding
-/task-doc "Add invoice export"         # start the task document
+/clauding-thought:init                 # analyze the codebase, generate .claude/, run the self-test
+/preflight "Add invoice export"        # context brief before coding, proposes the task's scope
+/task-doc "Add invoice export"         # start the task document (with its scope section)
 # ... write code ...
 /qc                                    # review changes against the project's rules
 /close-task                            # record lessons, refuse on BLOCK
-/evolve                                # periodically: re-analyze, update rules, bump version
-/report                                # what the governance layer is actually doing
-/init --update                         # after a plugin upgrade: refresh scripts and hooks
+/evolve                                # periodically: re-analyze, update rules, keep them scoped
+/clauding-thought:report               # what the governance layer is actually doing
+/clauding-thought:init --update        # after a plugin upgrade: refresh scripts, hooks, self-test
 ```
 
-## What `/init` generates
+## What the init skill generates
 
 ```
 .claude/
-├── manifest.json          project DNA: stack, architecture, conventions, boundaries, security
+├── manifest.json          project DNA: stack, architecture, conventions, boundaries, security, verification
 ├── CLAUDE.md              governance summary, loaded every session
 ├── CHANGELOG.md           governance version history
-├── settings.json          the four hooks (merged into existing settings)
+├── settings.json          the six hooks (merged into existing settings)
+├── selftest.json          last self-test result
 ├── rules/
 │   ├── security.md        always loaded
 │   ├── architecture.md    paths: scoped to source globs
@@ -64,10 +67,8 @@ Then in the project:
 ├── patterns/
 │   └── <archetype>.md     one per archetype found: handler, entity, migration, test, ...
 ├── skills/
-│   ├── init/              project-local copy, so /init --update works later
-│   ├── preflight/  qc/  task-doc/  close-task/  evolve/    generated for this project
-│   └── report/            boilerplate
-├── scripts/               hook scripts and the report aggregator
+│   └── preflight/  qc/  task-doc/  close-task/  evolve/    generated for this project
+├── scripts/               hook scripts and their helpers
 └── tasks/                 INDEX.md plus one document per task
 ```
 
@@ -75,12 +76,18 @@ Then in the project:
 
 | Hook | Event | What it does |
 |------|-------|--------------|
-| `secret-filter` | PreToolUse on Write and Edit | Denies writes containing cloud keys, private keys, provider tokens, connection strings with passwords, hardcoded credentials |
+| `secret-filter` | PreToolUse on Write, Edit, MultiEdit, NotebookEdit | Denies writes containing cloud keys, private keys, provider tokens, connection strings with passwords, hardcoded credentials |
+| `scope-guard` | PreToolUse on Write, Edit, MultiEdit, NotebookEdit | Denies writes outside the active task doc's scope section. The denial is a fork: log the discovery and stay in scope, or extend the scope as a visible decision. Inert without an active task |
 | `destructive-guard` | PreToolUse on Bash | Denies `rm -rf` on root, home or cwd, force pushes without lease, `git reset --hard`, `git clean -f`, destructive SQL, `chmod 777`, `dd` to devices, `mkfs` |
 | `anti-rationalization` | Stop | Pushes back once when the final response dismisses an issue ("out of scope", "pre-existing", "acceptable tradeoff") without committing to fix or track it |
-| `evidence-check` | Stop | Pushes back once when the final response claims tests pass or the build succeeds but no test or build output appears in the turn's tool results |
+| `evidence-check` | Stop | Pushes back once when the final response claims tests pass or the build succeeds but no test, build, or declared gate output appears in the turn's tool results |
+| `claim-guard` | Stop | Notes (or, in block mode, pushes back) when the final response asserts a fact about data or state with no declared data gate output in the turn. Claims labelled `VERIFIED`, `HYPOTHESIS`, or `evidence:` are exempt |
 
-All hooks fail open: a parse error or crash never blocks the tool. Every decision is logged to `.claude/hook-log.jsonl`, which `/report` aggregates. The Stop hooks honour `stop_hook_active`, so they fire at most once per turn.
+All hooks fail open: a parse error or crash never blocks the tool. Every decision is logged to `.claude/hook-log.jsonl`, which the report skill aggregates. Stop hooks honour `stop_hook_active`, so they fire at most once per turn.
+
+**Self-test.** The scaffold ends by running `scripts/selftest.py`: it builds throwaway fixture projects, pipes realistic input through every installed hook, checks each decision, and checks that `settings.json` registers each hook under the right event. Results go to `.claude/selftest.json`. A hook that does not fire in the self-test is reported as failed, and the init skill stops.
+
+**Optional LLM judge.** With `verification.llm_judge: true` in the manifest, the scaffold also registers a prompt-type Stop hook that asks the background model whether the response dismissed a finding or asserted a data fact without evidence. One model call per turn end; off by default.
 
 ## The manifest
 
@@ -90,14 +97,12 @@ All hooks fail open: a parse error or crash never blocks the tool. Every decisio
 {
   "version": "1.1",
   "governance": { "version": "1.0.0", "initialized": "2026-10-30", "last_evolved": null,
-                  "changelog": "CHANGELOG.md", "plugin_version": "3.0.0", "packs": [] },
+                  "changelog": "CHANGELOG.md", "plugin_version": "3.1.0", "packs": [] },
   "stack": { "language": "typescript", "framework": "nestjs", "frontend": "react",
              "testing": "vitest", "db": "postgresql", "orm": "prisma" },
   "architecture": {
     "tenancy": { "strategy": "column-scoped", "scope_column": "tenant_id",
                  "trait": "TenantScoped", "trait_path": "src/common/tenant-scoped.ts" },
-    "auth": { "authorization": { "strategy": "middleware",
-              "patterns": [ { "pattern": "guard", "scope": "all controllers" } ] } },
     "modules": [ { "name": "billing", "path": "src/billing" },
                  { "name": "catalog", "path": "src/catalog" } ]
   },
@@ -106,44 +111,56 @@ All hooks fail open: a parse error or crash never blocks the tool. Every decisio
   "security": { "posture": "strict",
                 "checks": [ { "id": "AUTH-001", "name": "Guard on every controller",
                               "severity": "error", "paths": ["src/**/*.controller.ts"] } ] },
-  "conventions": { "translation": { "system": "i18next", "locales": ["en", "de"],
-                                    "all_locales_required": true } },
-  "task_docs": { "enabled": true, "directory": "tasks" }
+  "verification": {
+    "test_command": "npm test",
+    "gates": [
+      { "name": "unit tests",   "command": "npm test",          "success_pattern": "Tests:\\s*\\d+ passed", "kind": "test" },
+      { "name": "schema check", "command": "npm run db:verify", "success_pattern": "schema ok",             "kind": "data" }
+    ],
+    "claim_guard": "annotate", "claim_window_turns": 1, "llm_judge": false
+  },
+  "task_docs": { "enabled": true, "directory": "tasks", "headings": { "scope": "Scope", "thesis": "Thesis" } }
 }
 ```
 
-The full schema is in `schema/manifest.schema.json`.
+`verification.gates` is how a project declares what counts as evidence: test gates back "tests pass", data gates back "the data is correct". `task_docs.headings` is how the hooks find the task doc sections even if a project renames them. The full schema is in `schema/manifest.schema.json`.
 
 ## Security posture
 
 **Strict** is the default for new projects: every security rule blocks. **Advisory** is set automatically for existing codebases: new code is still held to the strict rules, known gaps are recorded as `baseline_gaps` with a mitigation each, and the goal is to migrate to strict. Advisory is an on-ramp, not an exemption.
 
+## What it costs
+
+- Every hook event launches one Python interpreter. On a busy session that is a few thousand launches a day, each a few tens of milliseconds. The guards are registered on broad matchers on purpose: a prefix filter such as `Bash(rm *)` would miss compound commands, which is the case the guard exists for.
+- Hook commands use `python` on Windows and `python3` elsewhere. Teams on mixed machines should check `settings.json` after the scaffold runs.
+- Bash-side writes (`echo > file`, heredocs) bypass `scope-guard` and `secret-filter`; those hooks see the file tools only.
+- To disable a hook, delete its entry from `.claude/settings.json`; the scaffold will not re-add a hook you removed unless you run `--update`.
+
 ## Rule packs
 
-`packs/` holds reusable rule sets that `/init` offers when their `stack_filter` matches. The bundled `owasp-top-10` pack covers injection, authentication failures, sensitive data exposure, and security misconfiguration with language-neutral examples. See `packs/README.md` to write one.
+`packs/` holds reusable rule sets that the init skill offers when their `stack_filter` matches. The bundled `owasp-top-10` pack covers injection, authentication failures, sensitive data exposure, and security misconfiguration with language-neutral examples. See `packs/README.md` to write one.
 
 ## Repository layout
 
 ```
 clauding-thought/
 ├── .claude-plugin/        plugin.json, marketplace.json
-├── hooks/hooks.json       SessionStart hook that installs the project-local /init skill
-├── scripts/               hook scripts, scaffold.py, report_data.py (Python 3, stdlib only)
-├── templates/
-│   ├── init/              INSTRUCTIONS.md (the /init skill body) and the bundled schema
-│   ├── skills/report/     boilerplate skill copied into projects
-│   └── evolve/            changelog-spec.md
-├── rules/                 rule templates with {{placeholders}}, hydrated by /init
+├── skills/
+│   ├── init/SKILL.md      /clauding-thought:init
+│   └── report/SKILL.md    /clauding-thought:report
+├── scripts/               hook scripts, scaffold.py, selftest.py, report_data.py (Python 3, stdlib only)
+├── templates/evolve/      changelog-spec.md, copied next to the generated evolve skill
+├── rules/                 rule templates with {{placeholders}}, hydrated by the init skill
 ├── patterns/archetype.md  pattern template, one copy per archetype
 ├── packs/                 rule packs
-└── schema/                canonical manifest schema
+└── schema/                manifest schema
 ```
 
-The plugin itself ships no skills. Its SessionStart hook writes a project-local `/init` skill from `templates/init/INSTRUCTIONS.md`, and `/init` generates the rest inside the project. That keeps every skill project-local and editable.
+## Changes in 3.1
 
-## Changes in 3.0
+Two new hooks that read references the model did not write: `scope-guard` (the task doc's declared scope) and `claim-guard` (declared data gates in the transcript). A manifest `verification` block that declares what counts as evidence, and `task_docs.headings` so the hooks never hard-code a section name. A self-test that runs every hook on realistic input in isolation and is part of every scaffold run. Hooks now log the session id and the file path on every decision. The bootstrap and report skills ship as plugin skills (`/clauding-thought:init`, `/clauding-thought:report`), so the project-local init copy and the SessionStart seed are gone and Claude Code's own `/init` is no longer shadowed; `--update` retires both from projects scaffolded by 3.0. An opt-in LLM judge on Stop. Rule hygiene in `/evolve`.
 
-Removed everything Claude Code now provides natively or that never fired in practice: the rule re-injection hook (native `paths:` scoping covers it), the project-local memory directory (native auto-memory covers it), the skill-reminder hook, the critique, export, insights and thesis skills, the delivery tier, and the opt-in task-doc gates. The two Stop hooks were rewritten for the current hook contract (`last_assistant_message`, transcript scanning); the two PreToolUse hooks now use `hookSpecificOutput.permissionDecision`. All templates and the schema are stack-agnostic.
+Changes in 3.0 removed everything Claude Code now provides natively or that never fired in practice, and made all templates stack-agnostic.
 
 ## License
 

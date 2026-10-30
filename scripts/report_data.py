@@ -4,13 +4,14 @@
 Usage:
   python report_data.py [--since YYYY-MM-DD] [--last-days N]
 
-Output: JSON to stdout, consumed by the /report skill. The script does the
+Output: JSON to stdout, consumed by the report skill. The script does the
 deterministic counting; the skill does the rendering and interpretation.
 
 Reads (all optional, gracefully missing):
 - .claude/hook-log.jsonl  — hook telemetry written by hook_telemetry.py
-- .claude/manifest.json   — governance metadata
-- .claude/tasks/*.md      — task docs (status line near the top)
+- .claude/selftest.json   — last hook self-test result
+- .claude/manifest.json   — governance metadata, verification block, headings
+- .claude/<tasks>/*.md    — task docs (status line near the top, scope section)
 
 Stdlib only.
 """
@@ -23,15 +24,21 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from task_doc import find_claude_dir
+from task_doc import (  # noqa: E402
+    extract_section, find_active_tasks, find_claude_dir, list_items, load_manifest,
+    task_heading, verification,
+)
 
 STALE_DAYS = 7
+SCOPE_SAMPLE = 10
 
 
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--since", default=None, help="ISO date YYYY-MM-DD; entries on/after this date")
     p.add_argument("--last-days", type=int, default=None, help="Only the last N days")
+    p.add_argument("--project", default=None,
+                   help="Project directory (default: $CLAUDE_PROJECT_DIR, else the current directory)")
     return p.parse_args()
 
 
@@ -69,12 +76,14 @@ def in_window(dt, since, until):
 
 
 def aggregate_hooks(claude_dir, since, until):
-    """Per-hook counts of decisions, with the top reasons for blocks and feedback."""
+    """Per-hook counts of decisions, top reasons for interventions, and how
+    often scope-guard saw more than one active task."""
     log_path = os.path.join(claude_dir, "hook-log.jsonl")
     if not os.path.isfile(log_path):
-        return [], 0, "missing"
+        return [], 0, "missing", 0
 
     considered = 0
+    multiple_active = 0
     by_hook = defaultdict(lambda: {"fires": Counter(), "reasons": Counter(),
                                    "first_seen": None, "last_seen": None})
     try:
@@ -94,14 +103,16 @@ def aggregate_hooks(claude_dir, since, until):
                 b = by_hook[e.get("hook", "unknown")]
                 decision = e.get("decision", "unknown")
                 b["fires"][decision] += 1
-                if decision in ("block", "feedback") and e.get("reason"):
+                if decision in ("block", "feedback", "annotate") and e.get("reason"):
                     b["reasons"][e["reason"]] += 1
+                if (e.get("context") or {}).get("multiple_active_tasks"):
+                    multiple_active += 1
                 if ts and (b["first_seen"] is None or ts < b["first_seen"]):
                     b["first_seen"] = ts
                 if ts and (b["last_seen"] is None or ts > b["last_seen"]):
                     b["last_seen"] = ts
     except OSError:
-        return [], 0, "missing"
+        return [], 0, "missing", 0
 
     rotated = os.path.isfile(os.path.join(claude_dir, "hook-log.1.jsonl"))
     output = []
@@ -113,27 +124,20 @@ def aggregate_hooks(claude_dir, since, until):
             "first_seen": b["first_seen"].isoformat() if b["first_seen"] else None,
             "last_seen": b["last_seen"].isoformat() if b["last_seen"] else None,
         })
-    return output, considered, "rotated_earlier" if rotated else "complete"
+    return output, considered, "rotated_earlier" if rotated else "complete", multiple_active
 
 
-def governance_block(claude_dir, now):
-    path = os.path.join(claude_dir, "manifest.json")
-    out = {"plugin_version": None, "governance_version": None, "initialized": None,
-           "age_days": None, "last_evolved": None, "days_since_evolve": None,
-           "security_posture": None}
-    if not os.path.isfile(path):
-        return out
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            m = json.load(f)
-    except (OSError, ValueError):
-        return out
-    g = m.get("governance", {}) or {}
-    out["plugin_version"] = g.get("plugin_version")
-    out["governance_version"] = g.get("version")
-    out["initialized"] = g.get("initialized")
-    out["last_evolved"] = g.get("last_evolved")
-    out["security_posture"] = (m.get("security", {}) or {}).get("posture")
+def governance_block(manifest, now):
+    g = manifest.get("governance", {}) or {}
+    out = {
+        "plugin_version": g.get("plugin_version"),
+        "governance_version": g.get("version"),
+        "initialized": g.get("initialized"),
+        "age_days": None,
+        "last_evolved": g.get("last_evolved"),
+        "days_since_evolve": None,
+        "security_posture": (manifest.get("security", {}) or {}).get("posture"),
+    }
     init = parse_iso(g.get("initialized"))
     if init:
         out["age_days"] = (now - init).days
@@ -143,32 +147,79 @@ def governance_block(claude_dir, now):
     return out
 
 
-def tasks_block(claude_dir, since, until, now):
-    tasks_dir = os.path.join(claude_dir, "tasks")
-    out = {"total": 0, "status_distribution": {}, "stale_open": []}
+def selftest_block(claude_dir, now):
+    path = os.path.join(claude_dir, "selftest.json")
+    if not os.path.isfile(path):
+        return {"status": "never"}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return {"status": "unreadable"}
+    ran = parse_iso(d.get("ran_at"))
+    return {
+        "status": d.get("status"),
+        "passed": d.get("passed"),
+        "total": d.get("total"),
+        "ran_at": d.get("ran_at"),
+        "age_days": (now - ran).days if ran else None,
+        "interpreter": d.get("interpreter"),
+        "failed": [r.get("name") for r in d.get("results", []) if not r.get("ok")][:10],
+    }
+
+
+def verification_block(manifest):
+    v = verification(manifest)
+    gates = [g for g in (v.get("gates") or []) if isinstance(g, dict)]
+    return {
+        "declared": bool(v),
+        "test_command": v.get("test_command"),
+        "gates": len(gates),
+        "data_gates": sum(1 for g in gates if g.get("kind") == "data"),
+        "claim_guard": v.get("claim_guard", "annotate"),
+        "claim_window_turns": v.get("claim_window_turns", 1),
+        "llm_judge": bool(v.get("llm_judge")),
+    }
+
+
+def tasks_block(claude_dir, manifest, since, now):
+    directory = (manifest.get("task_docs") or {}).get("directory") or "tasks"
+    tasks_dir = os.path.join(claude_dir, directory)
+    heading = task_heading(manifest, "scope", "Scope")
+    out = {"total": 0, "status_distribution": {}, "stale_open": [],
+           "scope_coverage": {"with_scope": 0, "of": 0, "heading": heading},
+           "active_tasks": len(find_active_tasks(claude_dir, manifest))}
     if not os.path.isdir(tasks_dir):
         return out
     statuses = Counter()
     stale = []
-    for fname in sorted(os.listdir(tasks_dir)):
-        if not fname.endswith(".md") or fname == "INDEX.md":
+    docs = []
+    for fname in os.listdir(tasks_dir):
+        if not fname.endswith(".md") or fname.upper() == "INDEX.MD":
             continue
         fpath = os.path.join(tasks_dir, fname)
         try:
             mtime = datetime.fromtimestamp(os.path.getmtime(fpath), tz=timezone.utc)
             with open(fpath, "r", encoding="utf-8") as f:
-                head = f.read(2048)
+                text = f.read()
         except OSError:
             continue
+        docs.append((mtime, fname, text))
+
+    docs.sort(reverse=True)
+    sample = docs[:SCOPE_SAMPLE]
+    out["scope_coverage"]["of"] = len(sample)
+    out["scope_coverage"]["with_scope"] = sum(
+        1 for _, _, text in sample if list_items(extract_section(text, heading)))
+
+    for mtime, fname, text in docs:
         if since is not None and mtime < since:
-            # keep tasks modified before the window out of the window's counts
             continue
-        m = re.search(r"status:[\s*]*([A-Za-z_]+)", head, re.I)
-        status = m.group(1).lower() if m else "unknown"
+        m = re.search(r"status[\s*_]*:[\s*_]*([A-Za-z][A-Za-z _-]*)", text[:2048], re.I)
+        status = m.group(1).strip().lower().replace(" ", "_") if m else "unknown"
         statuses[status] += 1
         out["total"] += 1
-        if status in ("open", "in_progress"):
-            # created date from the filename prefix when present, else mtime
+        if status in ("open", "in_progress", "in-progress", "active"):
             cm = re.match(r"(\d{4}-\d{2}-\d{2})", fname)
             created = parse_iso(cm.group(1)) if cm else mtime
             days = (now - created).days if created else None
@@ -181,17 +232,21 @@ def tasks_block(claude_dir, since, until, now):
 
 def main():
     args = parse_args()
-    claude_dir = find_claude_dir()
+    start = args.project or os.environ.get("CLAUDE_PROJECT_DIR") or None
+    claude_dir = find_claude_dir(start)
     if not claude_dir:
-        print(json.dumps({"status": "error", "error": "No .claude/ directory found"}, indent=2))
+        print(json.dumps({"status": "error", "error": "No .claude/ directory found",
+                          "searched_from": start or os.getcwd()}, indent=2))
         sys.exit(1)
 
     since, until, label = resolve_window(args)
-    hooks, considered, log_status = aggregate_hooks(claude_dir, since, until)
-    tasks = tasks_block(claude_dir, since, until, until)
+    manifest = load_manifest(claude_dir)
+    hooks, considered, log_status, multiple_active = aggregate_hooks(claude_dir, since, until)
+    tasks = tasks_block(claude_dir, manifest, since, until)
 
     print(json.dumps({
         "status": "success",
+        "claude_dir": claude_dir,
         "generated_at": until.isoformat(timespec="seconds"),
         "window": {
             "filter": label,
@@ -201,8 +256,11 @@ def main():
             "hook_log_status": log_status,
             "tasks_considered": tasks["total"],
         },
-        "governance": governance_block(claude_dir, until),
+        "governance": governance_block(manifest, until),
+        "selftest": selftest_block(claude_dir, until),
+        "verification": verification_block(manifest),
         "hooks": hooks,
+        "multiple_active_tasks_seen": multiple_active,
         "tasks": tasks,
     }, indent=2))
 
