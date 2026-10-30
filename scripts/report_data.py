@@ -182,6 +182,45 @@ def verification_block(manifest):
     }
 
 
+_FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+
+def rules_block(claude_dir):
+    """Context cost of .claude/rules/: bytes per file, scoped (has paths:) or not.
+
+    Claude Code loads a rule file without paths: in every session, and one with
+    paths: only when a matching file is touched. The native /context command
+    shows the aggregate; this shows which file is costing what.
+    """
+    rules_dir = os.path.join(claude_dir, "rules")
+    out = {"files": [], "unconditional_bytes": 0, "scoped_bytes": 0, "largest": None}
+    if not os.path.isdir(rules_dir):
+        return out
+    for fname in sorted(os.listdir(rules_dir)):
+        if not fname.endswith(".md"):
+            continue
+        path = os.path.join(rules_dir, fname)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            continue
+        size = len(text.encode("utf-8"))
+        fm = _FRONTMATTER_RE.match(text)
+        globs = 0
+        if fm and re.search(r"(?m)^paths\s*:", fm.group(1)):
+            globs = len(re.findall(r"(?m)^\s+-\s+\S", fm.group(1)))
+        scoped = globs > 0
+        out["files"].append({"file": fname, "bytes": size, "scoped": scoped, "paths": globs})
+        if scoped:
+            out["scoped_bytes"] += size
+        else:
+            out["unconditional_bytes"] += size
+        if out["largest"] is None or size > out["largest"]["bytes"]:
+            out["largest"] = {"file": fname, "bytes": size}
+    return out
+
+
 def tasks_block(claude_dir, manifest, since, now):
     directory = (manifest.get("task_docs") or {}).get("directory") or "tasks"
     tasks_dir = os.path.join(claude_dir, directory)
@@ -262,6 +301,7 @@ def main():
         "hooks": hooks,
         "multiple_active_tasks_seen": multiple_active,
         "tasks": tasks,
+        "rules": rules_block(claude_dir),
     }, indent=2))
 
 

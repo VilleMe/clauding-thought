@@ -37,7 +37,9 @@ If the scaffold output shows `"mode": "update"`, follow its `next_steps` list an
 - Add an `[Unreleased]` entry to `.claude/CHANGELOG.md` naming what was refreshed.
 - Report what was refreshed, the retired files, and the self-test summary. STOP.
 
-Do NOT re-analyze. Do NOT touch preflight, qc, evolve, close-task, rules, or patterns.
+- If `.claude/agents/qc-reviewer.md` or `.claude/skills/qc-fix/SKILL.md` is missing (projects scaffolded before 3.2), generate them per 4c and 4h, and add `context: fork`, `agent: qc-reviewer`, `background: false` to the existing qc skill's frontmatter if absent. If the manifest has no `task_docs.complexity`, leave it absent; the scorer uses its defaults.
+
+Do NOT re-analyze. Do NOT touch preflight, evolve, close-task, rules, or patterns beyond the items above.
 
 ---
 
@@ -185,19 +187,19 @@ The governance summary, loaded in every session. Structure:
 7. **Where business logic goes**
 8. **Security enforcement**: the blocking rules, one line each
 9. **Pre-commit checklist**: ordered checks before finishing a change
-10. **Governance workflow**: one line each for `/preflight`, `/task-doc`, `/qc`, `/close-task`, `/evolve`, `/clauding-thought:report`, where the detailed rules live (`.claude/rules/`, `.claude/patterns/`), and the hooks in force: writes outside the active task's `## Scope` are denied, claims about data need a declared gate, test claims need test output.
+10. **Governance workflow**: one line each for `/preflight` (which also scores complexity and says whether to enter plan mode first), `/task-doc`, `/qc` (runs in a read-only subagent and returns a `QC_VERDICT` block; whoever ran it appends that block to the active task doc's `## QC` section), `/qc-fix` (the bounded fix-and-recheck loop), `/close-task`, `/evolve`, `/clauding-thought:report`, where the detailed rules live (`.claude/rules/`, `.claude/patterns/`), and the hooks in force: writes outside the active task's `## Scope` are denied, claims about data need a declared gate, test claims need test output.
 
 Keep it under 200 lines. Detail belongs in the rule files.
 
 ### 4c. Skills
 
-Generate five project-customized skills in `.claude/skills/<name>/SKILL.md`. Each has YAML frontmatter and full agent logic in the body, ends with `$ARGUMENTS`, and references this project's actual files, globs, and rule IDs.
+Generate six project-customized skills in `.claude/skills/<name>/SKILL.md`. Each has YAML frontmatter and full agent logic in the body, ends with `$ARGUMENTS`, and references this project's actual files, globs, and rule IDs.
 
-**`preflight`** — context brief before coding. Frontmatter:
+**`preflight`** — context brief and routing before coding. Frontmatter:
 ```yaml
 ---
 name: preflight
-description: "Gathers context before coding. Classifies the task, loads the relevant rules and patterns, finds sibling files, identifies risks, proposes the task's scope."
+description: "Gathers context before coding. Classifies the task, loads the relevant rules and patterns, finds sibling files, proposes the task's scope, scores complexity, and says whether to plan first."
 argument-hint: "<task description>"
 user-invocable: true
 allowed-tools: ["Read", "Glob", "Grep", "Bash"]
@@ -205,25 +207,61 @@ allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 ```
 It classifies the task by archetype, loads only the matching rule sections and pattern files, lists sibling files to imitate, names the security surface, proposes the path globs the task will need (these become the task doc's scope section), and recommends a task doc when the change meets `task_docs.auto_create_threshold`.
 
-**`qc`** — post-generation review. Frontmatter:
+It then scores complexity by running the scorer with the files it expects the task to touch (project-relative), adding `--new-archetype` when the task creates a file type with no sibling:
+```bash
+python .claude/scripts/complexity.py --files <file> <file> ... [--new-archetype]
+```
+The brief MUST print the returned score, tier, and factors, and route on the tier:
+- **trivial**: proceed with the brief.
+- **medium**: tell the user to enter plan mode before any edit, and list what the plan must contain: target files and order, the pattern each file follows, security and tenancy implications, and the rollback story. The brief ends there; coding starts after the plan is approved.
+- **high**: as medium, and additionally decompose the work into sub-tasks, each with its own task doc and scope section, before any edit.
+Weights and thresholds come from `task_docs.complexity` in the manifest; the brief names them so the user can tune them.
+
+**`qc`** — post-generation review, run in a read-only subagent. Frontmatter:
 ```yaml
 ---
 name: qc
-description: "Quality control review. Evaluates uncommitted changes against the manifest-driven security, architecture, and convention rules. Returns a QC_VERDICT."
+description: "Quality control review. Evaluates uncommitted changes against the manifest-driven security, architecture, and convention rules in a read-only subagent. Returns a QC_VERDICT."
 argument-hint: "[--diff | --full]"
 user-invocable: true
-allowed-tools: ["Read", "Glob", "Grep", "Bash"]
+context: fork
+agent: qc-reviewer
+background: false
 ---
 ```
+`context: fork` runs the body in the `qc-reviewer` subagent (generated in 4h) with no conversation history, and `background: false` returns its result in the invoking turn. The body therefore MUST gather its own inputs: run `git diff` and `git diff --cached` (or, with `--full`, read every file under the active task doc's scope section), read `.claude/manifest.json`, the rule files, the matching pattern files, and the active task doc's Suppressions table. It MUST end by returning the `QC_VERDICT` block as its entire result, with nothing after it.
+
 The body MUST embed these behavioural rules:
 1. **Report, don't judge.** Report each violation with its rule ID and severity. Never downgrade a finding as "acceptable", "a deliberate tradeoff", "minor", or "justified". The developer decides what to suppress.
 2. **Rules are the source of truth.** If `.claude/rules/` says X and the code does Y, that is a violation. QC does not second-guess rules; `/evolve` changes them.
 3. **Check suppressions, not intent.** The only reason to skip a finding is an entry in the active task doc's Suppressions table.
 4. **Convention violations can be errors.** Read the inline `<!-- severity: -->` annotation; do not assume conventions are always warnings.
 5. **Three tiers, one verdict.** Security, architecture, conventions, each with its own section. `manifest.security.posture` decides whether security findings BLOCK (strict) or WARN on baseline gaps (advisory). The verdict is PASS, WARN, or BLOCK.
-6. **Append the verdict** to the active task doc's QC section when one exists.
+6. **Every finding names the file, the line, the rule ID, and the rule section it violates**, so a fix pass can work from the verdict alone.
+
+The `QC_VERDICT` block:
+```
+QC_VERDICT: PASS | WARN | BLOCK
+  security:     <findings or "none">
+  architecture: <findings or "none">
+  conventions:  <findings or "none">
+  suppressed:   <rule IDs skipped via the Suppressions table>
+  files_reviewed: N
+```
 
 Claude Code also ships `/code-review` and `/security-review`. QC does not replace them: it checks this project's declared rules; they hunt bugs and generic security issues. Mention both in the skill's closing note.
+
+**`qc-fix`** — bounded fix-and-recheck loop, run in the main conversation. Frontmatter:
+```yaml
+---
+name: qc-fix
+description: "Runs /qc, and on WARN or BLOCK applies a targeted fix pass limited to the verdict's findings, then re-runs /qc. At most three cycles; every cycle is appended to the task doc."
+argument-hint: "[--max-cycles N]"
+user-invocable: true
+allowed-tools: ["Read", "Edit", "Write", "Glob", "Grep", "Bash"]
+---
+```
+The body: run `/qc` and read the verdict. If PASS, append it to the active task doc's `## QC` section and stop. Otherwise, for at most `--max-cycles` cycles (default 3): launch a fix pass as a subagent whose prompt contains only the verdict, the affected files, and the violated rule sections, with the instruction to change nothing else; then run `/qc` again; append each verdict, with the cycle number and the files changed, to `## QC`. If the verdict is still BLOCK after the last cycle, stop, print the history of the cycles, and say what remains, without softening it. The cap is not configurable above 5: self-correction degrades past a few iterations.
 
 **`evolve`** — re-analysis and rule maintenance. Frontmatter:
 ```yaml
@@ -286,6 +324,8 @@ Claude Code reads the `paths:` frontmatter natively: a rule file with `paths:` i
 
 Keep each rule file under 12 KB. If the project has more to say, make another scoped file rather than a longer one.
 
+**Per-module rule files.** When `architecture.modules` has more than one entry, write one `.claude/rules/<module>.md` per module with `paths:` set to that module's path, holding only what is specific to that module: its allowed imports from `boundaries.modules_may_import`, its own conventions, and any security checks whose `paths` fall inside it. The shared architecture and conventions files keep what applies everywhere. A module file with nothing specific to say is not written.
+
 Also set the `<!-- scope: -->` annotations on sections to the archetype globs from Step 2, and `<!-- severity: -->` on sections that deviate from the tier default.
 
 **Pack merging:** for each selected pack, append its rule files to the target rule file as delimited sections, and add the pack's `security_checks` to `manifest.security.checks`:
@@ -317,13 +357,28 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Architecture rules: <key boundaries>
 - Convention rules: <key conventions>
 - Pattern files: <list>
-- Skills: preflight, qc, evolve, task-doc, close-task
+- Skills: preflight, qc, qc-fix, evolve, task-doc, close-task
+- Subagent: qc-reviewer
 - Hooks: secret-filter, destructive-guard, scope-guard, anti-rationalization, evidence-check, claim-guard
 ```
 
 ### 4g. Settings and hooks
 
 Already written by the scaffold. Do not write or edit `.claude/settings.json`; read it only if you need to verify it.
+
+### 4h. The reviewer subagent
+
+Write `.claude/agents/qc-reviewer.md`, the subagent the `qc` skill runs in:
+```markdown
+---
+name: qc-reviewer
+description: "Read-only reviewer for this project's declared governance rules. Used by the qc skill; returns a QC_VERDICT block."
+tools: Read, Glob, Grep, Bash
+---
+
+You review changes in <project name> against the rules in `.claude/rules/` and the manifest in `.claude/manifest.json`. You do not edit files. Bash is for `git diff`, `git diff --cached`, `git status`, and `git log`, nothing else. You report every violation with file, line, rule ID, and the rule section; you never downgrade a finding; you skip a finding only when the active task doc's Suppressions table lists its rule ID. Your entire result is one QC_VERDICT block.
+```
+Fill in the project name and, if the manifest names a test command, allow Bash to run it as well so QC can confirm the suite still passes.
 
 ## Step 5: VERIFY — Calibrate
 
@@ -344,13 +399,14 @@ Already written by the scaffold. Do not write or edit `.claude/settings.json`; r
 | 1 | `.claude/manifest.json` | GENERATE, with `verification` and `task_docs.headings` |
 | 2 | `.claude/CLAUDE.md` | GENERATE |
 | 3 | `.claude/CHANGELOG.md` | GENERATE |
-| 4 | `.claude/rules/{security,architecture,conventions}.md` | GENERATE by hydrating templates |
+| 4 | `.claude/rules/{security,architecture,conventions}.md`, plus `rules/<module>.md` per module when there is more than one | GENERATE by hydrating templates |
 | 5 | `.claude/patterns/*.md` | GENERATE, one per archetype |
-| 6 | `.claude/skills/{preflight,qc,evolve,task-doc,close-task}/SKILL.md` | GENERATE project-customized |
-| 7 | `.claude/settings.json` | scaffold (verify, do not write) |
-| 8 | `.claude/tasks/INDEX.md` | scaffold (verify) |
-| 9 | `.claude/skills/evolve/changelog-spec.md` | scaffold (verify) |
-| 10 | `.claude/scripts/*.py`, `.claude/selftest.json` | scaffold (verify the self-test passed) |
+| 6 | `.claude/skills/{preflight,qc,qc-fix,evolve,task-doc,close-task}/SKILL.md` | GENERATE project-customized |
+| 7 | `.claude/agents/qc-reviewer.md` | GENERATE (4h) |
+| 8 | `.claude/settings.json` | scaffold (verify, do not write) |
+| 9 | `.claude/tasks/INDEX.md` | scaffold (verify) |
+| 10 | `.claude/skills/evolve/changelog-spec.md` | scaffold (verify) |
+| 11 | `.claude/scripts/*.py`, `.claude/selftest.json` | scaffold (verify the self-test passed) |
 
 Report what you created, the self-test summary, and any manifest fields left `null`.
 

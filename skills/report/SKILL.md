@@ -64,6 +64,12 @@ GOVERNANCE_REPORT
     claim_guard mode: <verification.claim_guard>
     llm_judge: <verification.llm_judge>     # its interventions show in the session, not in this log
 
+  context_cost:                              # from rules; /context shows the aggregate, this shows which file
+    rules loaded every session: <rules.unconditional_bytes> bytes
+    rules loaded on touch:      <rules.scoped_bytes> bytes
+    largest: <rules.largest.file> (<rules.largest.bytes> bytes)
+    unscoped files: <list of rules.files where scoped is false, except security.md>
+
   tasks:
     total: <tasks.total>
     by_status: <tasks.status_distribution>
@@ -95,6 +101,7 @@ Every recommendation cites a number from the data.
 - Scope section present in fewer than half of the last 10 task docs: `scope-guard` cannot fire for those tasks; regenerate the task-doc skill (`/clauding-thought:init --update` does this) or add the section by hand.
 - `multiple_active_tasks_seen` > 0: more than one task doc is open at once, so scope-guard is reading the newest one; close or pause the others.
 - No data gates declared and `claim-guard` annotated more than 3 times: add the check that would prove those claims to `verification.gates` with `kind: "data"`.
+- `rules.unconditional_bytes` > 16000, or any rule file other than `security.md` without `paths:`, or any file over 12000 bytes: run `/evolve`; its rule-hygiene step proposes `paths:` scoping and splits.
 - A hook with `block` or `feedback` > 10 in the window: name the hook, say what it keeps catching, and ask whether the rule or the workflow should change.
 - The same suppressed rule in more than 3 tasks: update the rule or add a permanent exception via `/evolve`.
 - Stale open tasks: close, defer, or document why.

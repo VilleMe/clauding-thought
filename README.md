@@ -15,7 +15,8 @@ Claude Code ships rules (`.claude/rules/` with `paths:` scoping), auto-memory, s
 | `/init` writes a generic CLAUDE.md | Deep analysis into a manifest: tenancy, auth, boundaries, conventions, archetypes, verification gates |
 | Rules are hand-written | Rule files hydrated from the codebase, with `paths:` frontmatter so they load only when relevant |
 | No notion of "how a handler looks here" | One pattern file per archetype, canonical example copied from the project |
-| Review is generic | `/qc` checks the project's own declared rules, with severity tiers and a suppressions table |
+| Review is generic | `/qc` checks the project's own declared rules in a read-only subagent, with severity tiers and a suppressions table; `/qc-fix` runs a bounded fix-and-recheck loop |
+| Nothing routes a big change into plan mode | `/preflight` scores complexity from the files a task will touch and sends medium and high tasks into plan mode before any edit |
 | Nothing stops a task from quietly touching files it never declared | `scope-guard` denies writes outside the active task's declared scope |
 | No real-time secret or destructive-command guard on writes and shell | `secret-filter` and `destructive-guard` |
 | Nothing stops "tests pass" without a test run, or "the data is correct" without a check, or quiet dismissal of findings | `evidence-check`, `claim-guard`, `anti-rationalization` |
@@ -41,10 +42,11 @@ Then in the project:
 
 ```
 /clauding-thought:init                 # analyze the codebase, generate .claude/, run the self-test
-/preflight "Add invoice export"        # context brief before coding, proposes the task's scope
+/preflight "Add invoice export"        # context brief, proposed scope, complexity score and routing
 /task-doc "Add invoice export"         # start the task document (with its scope section)
-# ... write code ...
-/qc                                    # review changes against the project's rules
+# ... plan first if preflight said so, then write code ...
+/qc                                    # review changes against the project's rules (read-only subagent)
+/qc-fix                                # or: review, fix only what the verdict names, re-review, max 3 cycles
 /close-task                            # record lessons, refuse on BLOCK
 /evolve                                # periodically: re-analyze, update rules, keep them scoped
 /clauding-thought:report               # what the governance layer is actually doing
@@ -63,12 +65,15 @@ Then in the project:
 ├── rules/
 │   ├── security.md        always loaded
 │   ├── architecture.md    paths: scoped to source globs
-│   └── conventions.md     paths: scoped to source globs
+│   ├── conventions.md     paths: scoped to source globs
+│   └── <module>.md        one per module when there are several, scoped to the module path
 ├── patterns/
 │   └── <archetype>.md     one per archetype found: handler, entity, migration, test, ...
 ├── skills/
-│   └── preflight/  qc/  task-doc/  close-task/  evolve/    generated for this project
-├── scripts/               hook scripts and their helpers
+│   └── preflight/  qc/  qc-fix/  task-doc/  close-task/  evolve/    generated for this project
+├── agents/
+│   └── qc-reviewer.md     the read-only subagent /qc runs in
+├── scripts/               hook scripts, their helpers, and the complexity scorer
 └── tasks/                 INDEX.md plus one document per task
 ```
 
@@ -155,6 +160,10 @@ clauding-thought/
 ├── packs/                 rule packs
 └── schema/                manifest schema
 ```
+
+## Changes in 3.2
+
+`/qc` now runs in a generated read-only subagent (`.claude/agents/qc-reviewer.md`) and returns only its verdict, so the review never pollutes the main context; whoever ran it appends the verdict to the task doc. `/qc-fix` is the closed loop: review, a fix pass limited to the verdict's findings, re-review, at most three cycles, every cycle recorded. `/preflight` scores complexity with `scripts/complexity.py` from the files the task will touch (file count, module spread, security surface, new archetype; weights and thresholds in `task_docs.complexity`) and routes medium tasks into native plan mode and high tasks into plan mode plus decomposition. Projects with several modules get one scoped rule file per module. The report shows which rule files load every session and which load on touch. The self-test covers the scorer.
 
 ## Changes in 3.1
 

@@ -161,6 +161,50 @@
               "description": "Section stating the user-visible claim and the observable that proves it."
             }
           }
+        },
+        "complexity": {
+          "type": "object",
+          "description": "Weights and thresholds for the complexity score that preflight computes (scripts/complexity.py). score = files*weights.files + cross_module*weights.cross_module + security_surface*weights.security_surface + new_archetype*weights.new_archetype. Tier: trivial below thresholds.medium, medium from there, high from thresholds.high. Medium routes into plan mode before editing; high also decomposes into sub-tasks.",
+          "properties": {
+            "weights": {
+              "type": "object",
+              "properties": {
+                "files": {
+                  "type": "number",
+                  "default": 1,
+                  "description": "Per file the task is expected to touch"
+                },
+                "cross_module": {
+                  "type": "number",
+                  "default": 3,
+                  "description": "Added once when the files span more than one module from architecture.modules"
+                },
+                "security_surface": {
+                  "type": "number",
+                  "default": 3,
+                  "description": "Added once when any file matches a security.checks[].paths glob"
+                },
+                "new_archetype": {
+                  "type": "number",
+                  "default": 2,
+                  "description": "Added once when the task creates a file type with no sibling in the project"
+                }
+              }
+            },
+            "thresholds": {
+              "type": "object",
+              "properties": {
+                "medium": {
+                  "type": "number",
+                  "default": 4
+                },
+                "high": {
+                  "type": "number",
+                  "default": 8
+                }
+              }
+            }
+          }
         }
       }
     },

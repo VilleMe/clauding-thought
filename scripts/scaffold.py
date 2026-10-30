@@ -20,7 +20,8 @@ import shutil
 import subprocess
 import sys
 
-# Scripts copied into <project>/.claude/scripts/ (hooks plus their helpers).
+# Scripts copied into <project>/.claude/scripts/: hooks, their helpers, and the
+# tool scripts that generated skills call (project skills cannot reach the plugin root).
 HOOK_SCRIPTS = [
     "secret-filter.py",
     "destructive-guard.py",
@@ -31,6 +32,7 @@ HOOK_SCRIPTS = [
     "hook_telemetry.py",
     "task_doc.py",
     "transcript.py",
+    "complexity.py",
 ]
 
 # Scripts whose hook registrations this plugin owns (by file name).
@@ -51,7 +53,7 @@ RETIRED_SCRIPTS = {
 RETIRED_PROJECT_SKILLS = ("init", "report")
 PLUGIN_SKILL_MARKER = "Clauding Thought"
 
-GENERATED_SKILLS = ["preflight", "qc", "evolve", "task-doc", "close-task"]
+GENERATED_SKILLS = ["preflight", "qc", "qc-fix", "evolve", "task-doc", "close-task"]
 
 LLM_JUDGE_MARKER = "[clauding-thought llm-judge]"
 LLM_JUDGE_PROMPT = (
@@ -207,7 +209,7 @@ try:
     manifest = load_json(manifest_path) if os.path.isfile(manifest_path) else {}
 
     # --- 1. Directory tree ---
-    for d in ["skills/" + s for s in GENERATED_SKILLS] + ["rules", "patterns", "tasks", "scripts"]:
+    for d in ["skills/" + s for s in GENERATED_SKILLS] + ["agents", "rules", "patterns", "tasks", "scripts"]:
         os.makedirs(os.path.join(claude_dir, d), exist_ok=True)
 
     # --- 2. Files copied next to generated skills ---
@@ -329,6 +331,8 @@ try:
             ".claude/rules/architecture.md: hydrate from the plugin's rules/architecture.md template",
             ".claude/rules/conventions.md: hydrate from the plugin's rules/conventions.md template",
             ".claude/patterns/<archetype>.md: one per sampled archetype, from patterns/archetype.md",
+            ".claude/rules/<module>.md: one per module when architecture.modules has more than one entry, scoped with paths:",
+            ".claude/agents/qc-reviewer.md: the read-only subagent the qc skill runs in",
         ] + [f".claude/skills/{s}/SKILL.md: generate project-customized" for s in GENERATED_SKILLS]
 
     print(json.dumps(result, indent=2))

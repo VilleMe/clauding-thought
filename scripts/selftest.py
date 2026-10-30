@@ -288,6 +288,30 @@ def registration_rows(settings, scripts_present):
     return rows
 
 
+def complexity_rows(interpreter, fixture):
+    """The complexity scorer must route by file count, module spread, and security surface."""
+    script = os.path.join(fixture, ".claude", "scripts", "complexity.py")
+    if not os.path.isfile(script):
+        return [("complexity: scorer installed", False, "complexity.py missing from .claude/scripts")]
+    cases = [
+        ("complexity: one file is trivial", ["src/alpha/x.ts"], "trivial"),
+        ("complexity: five files is medium", ["src/alpha/%d.ts" % i for i in range(5)], "medium"),
+        ("complexity: cross-module plus security surface is high",
+         ["src/alpha/x.ts", "src/beta/y.controller.ts"], "high"),
+    ]
+    rows = []
+    for name, files, expect in cases:
+        try:
+            cp = subprocess.run([interpreter, script, "--project", fixture, "--files", *files],
+                                capture_output=True, text=True, cwd=fixture, timeout=30)
+            got = json.loads(cp.stdout).get("tier") if cp.stdout.strip() else None
+        except (OSError, ValueError, subprocess.SubprocessError) as e:
+            got = str(e)
+        ok = got == expect
+        rows.append((name, ok, "" if ok else f"expected {expect}, got {got}"))
+    return rows
+
+
 def helpers_row(interpreter, scripts_dir):
     code = "import sys; sys.path.insert(0, %r); import %s" % (scripts_dir, ", ".join(HELPERS))
     try:
@@ -314,6 +338,10 @@ def main():
     base_manifest = {
         "version": "1.1",
         "task_docs": {"directory": "tasks", "headings": {"scope": "Scope", "thesis": "Thesis"}},
+        "architecture": {"modules": [{"name": "alpha", "path": "src/alpha"}, {"name": "beta", "path": "src/beta"}]},
+        "security": {"posture": "strict",
+                     "checks": [{"id": "AUTH-001", "name": "guard", "severity": "error",
+                                 "paths": ["src/**/*.controller.ts"]}]},
         "verification": {
             "test_command": "pytest",
             "gates": [
@@ -346,6 +374,9 @@ def main():
             rc, out, err = run_hook(interpreter, fixture, script, payload)
             ok = judge(expect, rc, out, err)
             detail = "" if ok else f"expected {expect}; exit={rc} stdout={out.strip()[:160]!r} stderr={err.strip()[:160]!r}"
+            results.append({"name": name, "ok": ok, "detail": detail})
+
+        for name, ok, detail in complexity_rows(interpreter, fx):
             results.append({"name": name, "ok": ok, "detail": detail})
 
         scripts_present = set(os.listdir(scripts_dir))

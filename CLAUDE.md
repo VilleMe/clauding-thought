@@ -8,14 +8,14 @@ Clauding Thought is a Claude Code plugin that generates a project-specific `.cla
 
 - `.claude-plugin/plugin.json`, `marketplace.json` — plugin manifest and marketplace entry; bump `version` in both on every release
 - `skills/init/SKILL.md` — the bootstrap skill, invoked as `/clauding-thought:init`; `skills/report/SKILL.md` — `/clauding-thought:report`. Both run scripts via `${CLAUDE_PLUGIN_ROOT}`
-- `scripts/` — Python 3, stdlib only: the six hook scripts, `scaffold.py`, `selftest.py`, `report_data.py`, shared helpers `hook_telemetry.py`, `task_doc.py`, `transcript.py`
+- `scripts/` — Python 3, stdlib only: the six hook scripts, `scaffold.py`, `selftest.py`, `report_data.py`, `complexity.py` (copied into projects for the preflight skill), shared helpers `hook_telemetry.py`, `task_doc.py`, `transcript.py`, and `fixtures/transcript.jsonl`
 - `templates/evolve/changelog-spec.md` — copied next to the generated evolve skill
 - `rules/` — rule templates with `{{placeholder}}` syntax, hydrated by the init skill into `.claude/rules/`
 - `patterns/archetype.md` — pattern template, hydrated once per detected archetype
 - `packs/` — reusable rule packs (plain Markdown plus `pack.json`)
 - `schema/manifest.schema.json` — the manifest schema; the init skill reads it from the plugin root
 
-The plugin ships no SessionStart hook and copies no skills into projects. Generated skills (preflight, qc, evolve, task-doc, close-task) are written per project by the init skill.
+The plugin ships no SessionStart hook and copies no skills into projects. Generated skills (preflight, qc, qc-fix, evolve, task-doc, close-task) and the `qc-reviewer` subagent are written per project by the init skill. `qc` runs with `context: fork` in that subagent; `qc-fix` orchestrates from the main conversation. Project skills cannot reach `${CLAUDE_PLUGIN_ROOT}`, so any script a generated skill calls must be in the scaffold's copy list.
 
 ## Conventions
 
