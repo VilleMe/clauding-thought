@@ -1,0 +1,80 @@
+{
+  "name": "owasp-top-10",
+  "version": "1.0.0",
+  "description": "OWASP Top 10 security rules for web applications. Covers injection, authentication failures, sensitive data exposure, and security misconfiguration.",
+  "tags": ["security", "owasp", "web"],
+  "stack_filter": {
+    "language": ["php", "python", "typescript", "javascript", "java", "csharp", "ruby", "go"],
+    "framework": []
+  },
+  "rules": [
+    {
+      "file": "rules/injection.md",
+      "target": "rules/security.md",
+      "merge_strategy": "append_section",
+      "section_id": "injection"
+    },
+    {
+      "file": "rules/auth-failures.md",
+      "target": "rules/security.md",
+      "merge_strategy": "append_section",
+      "section_id": "auth-failures"
+    },
+    {
+      "file": "rules/sensitive-data.md",
+      "target": "rules/security.md",
+      "merge_strategy": "append_section",
+      "section_id": "sensitive-data"
+    },
+    {
+      "file": "rules/security-misconfiguration.md",
+      "target": "rules/security.md",
+      "merge_strategy": "append_section",
+      "section_id": "security-misconfiguration"
+    }
+  ],
+  "security_checks": [
+    {
+      "id": "OWASP-A03-001",
+      "name": "SQL injection",
+      "severity": "error",
+      "description": "Detects raw SQL queries with string concatenation or interpolation instead of parameterized queries.",
+      "detect": "String concatenation or interpolation in SQL query strings; raw query methods without parameter binding."
+    },
+    {
+      "id": "OWASP-A03-002",
+      "name": "Command injection",
+      "severity": "error",
+      "description": "Detects shell command execution with unsanitized user input.",
+      "detect": "exec(), system(), shell_exec(), subprocess with shell=True, or backtick operators using variables derived from user input."
+    },
+    {
+      "id": "OWASP-A03-003",
+      "name": "XSS via unescaped output",
+      "severity": "error",
+      "description": "Detects unescaped user input rendered in HTML templates.",
+      "detect": "Raw/unescaped output directives ({!! !!}, |safe, dangerouslySetInnerHTML, v-html) with user-controlled data."
+    },
+    {
+      "id": "OWASP-A07-001",
+      "name": "Authentication bypass",
+      "severity": "error",
+      "description": "Detects endpoints or controllers missing authentication middleware.",
+      "detect": "Route definitions or controller classes without auth middleware; public methods in authenticated controllers."
+    },
+    {
+      "id": "OWASP-A02-001",
+      "name": "Weak cryptography",
+      "severity": "error",
+      "description": "Detects use of weak or deprecated cryptographic algorithms.",
+      "detect": "MD5, SHA1 for password hashing; DES, RC4, or ECB mode encryption; hardcoded IVs or salts."
+    },
+    {
+      "id": "OWASP-A05-001",
+      "name": "Security misconfiguration",
+      "severity": "warning",
+      "description": "Detects common security misconfigurations in application settings.",
+      "detect": "Debug mode enabled in production configs; permissive CORS (Access-Control-Allow-Origin: *); missing security headers; default credentials."
+    }
+  ]
+}
