@@ -155,13 +155,17 @@ clauding-thought/
 ├── skills/
 │   ├── init/SKILL.md      /clauding-thought:init
 │   └── report/SKILL.md    /clauding-thought:report
-├── scripts/               hook scripts, scaffold.py, selftest.py, report_data.py (Python 3, stdlib only)
+├── scripts/               hook scripts, scaffold.py, selftest.py, scaffoldtest.py, report_data.py (Python 3, stdlib only)
 ├── templates/evolve/      changelog-spec.md, copied next to the generated evolve skill
 ├── rules/                 rule templates with {{placeholders}}, hydrated by the init skill
 ├── patterns/archetype.md  pattern template, one copy per archetype
 ├── packs/                 rule packs
 └── schema/                manifest schema
 ```
+
+## Changes in 3.4.1
+
+The scaffold no longer retires any file under `.claude/rules/`. 3.4.0 deleted `rules/delivery.md` when its text contained the word "delivery", which every delivery rule file does, so a project's own rules written under that name were lost on update. Hydrated rules are extracted from the project and edited by it, so they are project content even when the plugin wrote the first draft, and nothing in 3.x replaces that file. The scaffold scenarios that verified 3.4 now live in the repository as `scripts/scaffoldtest.py` and include a project-authored `rules/delivery.md`, with and without the generated header, surviving an update unchanged. If 3.4.0 deleted the file in your project, restore it from version control.
 
 ## Changes in 3.4
 

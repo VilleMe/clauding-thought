@@ -1,5 +1,5 @@
 {
   "name": "clauding-thought",
   "description": "Project-specific governance for Claude Code, generated from your codebase. Run /clauding-thought:init to analyze a project and generate its .claude/ rules, patterns, skills, and hooks.",
-  "version": "3.4.0"
+  "version": "3.4.1"
 }
