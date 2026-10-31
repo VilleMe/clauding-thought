@@ -9,7 +9,7 @@
     {
       "name": "clauding-thought",
       "description": "Generates a project-specific .claude/ governance layer (manifest, path-scoped rules, patterns, task-loop skills) and installs six enforcement hooks with a self-test. Run /clauding-thought:init to bootstrap.",
-      "version": "3.3.0",
+      "version": "3.4.0",
       "author": {
         "name": "VilleMe"
       },

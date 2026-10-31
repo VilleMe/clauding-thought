@@ -100,6 +100,22 @@
         "plugin_version": {
           "type": "string",
           "description": "Clauding Thought plugin version that last wrote this governance layer."
+        },
+        "disabled_hooks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "secret-filter",
+              "destructive-guard",
+              "scope-guard",
+              "anti-rationalization",
+              "evidence-check",
+              "claim-guard"
+            ]
+          },
+          "default": [],
+          "description": "Hooks the scaffold must not register. The self-test expects a disabled hook to be absent, and the report lists it. The documented way to turn a hook off."
         }
       }
     },
@@ -158,7 +174,7 @@
             "thesis": {
               "type": "string",
               "default": "Thesis",
-              "description": "Section stating the user-visible claim and the observable that proves it."
+              "description": "Section stating the user-visible Claim, the Observable that proves it, and a Demonstrated line. Demonstrated counts only when the line starts with a date followed by how it was shown: `2026-10-30T10:00Z via /verify: ...` (a run) or `2026-10-30 attested by <who>: ...` (a person). A task with no user-visible outcome writes `no-user-observable-change: true`; one whose outcome cannot be shown locally writes `cannot-demonstrate-here: <reason>`."
             }
           }
         },
@@ -189,7 +205,8 @@
                   "default": 2,
                   "description": "Added once when the task creates a file type with no sibling in the project"
                 }
-              }
+              },
+              "description": "Non-negative finite numbers. The scorer rejects anything else."
             },
             "thresholds": {
               "type": "object",
@@ -202,7 +219,8 @@
                   "type": "number",
                   "default": 8
                 }
-              }
+              },
+              "description": "Score boundaries; medium must be below high. The scorer rejects an inverted pair."
             }
           }
         }
@@ -491,15 +509,16 @@
         },
         "api_style": {
           "type": "string",
-          "enum": [
-            "inertia-resources",
+          "description": "How the backend serves data to clients",
+          "examples": [
+            "rest-json",
             "json-api",
-            "rest-plain",
             "graphql",
             "grpc",
-            "trpc"
-          ],
-          "description": "How the backend serves data to clients"
+            "trpc",
+            "server-rendered",
+            "inertia"
+          ]
         },
         "modules": {
           "type": "array",
@@ -511,7 +530,8 @@
                 "type": "string"
               },
               "path": {
-                "type": "string"
+                "type": "string",
+                "description": "Directory of the module, relative to the project root, without a glob (e.g. src/billing). The complexity scorer matches files by this prefix; per-module rule files use `<path>/**` as their paths: glob."
               },
               "description": {
                 "type": "string"
@@ -599,12 +619,14 @@
           "properties": {
             "system": {
               "type": "string",
-              "enum": [
+              "description": "How translations are stored and looked up",
+              "examples": [
                 "nested-json",
                 "flat-json",
-                "php-files",
+                "gettext",
                 "i18next",
                 "intl",
+                "resource-bundles",
                 "none"
               ]
             },
@@ -831,7 +853,7 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "Glob patterns of files this check applies to. Absent or empty means all files."
+                "description": "Glob patterns of files this check applies to. Absent or empty means all files for QC. The complexity scorer counts only checks that have paths as security surface, so give authorization, tenancy and exposure checks their globs."
               }
             }
           }
@@ -910,8 +932,7 @@
             "type": "object",
             "required": [
               "name",
-              "command",
-              "success_pattern"
+              "command"
             ],
             "properties": {
               "name": {
@@ -923,7 +944,7 @@
               },
               "success_pattern": {
                 "type": "string",
-                "description": "Regular expression that matches the command's output when the gate passes"
+                "description": "Regular expression that matches the command's output when the gate passes. Must match a real line of output; a pattern that matches the empty string is ignored."
               },
               "kind": {
                 "type": "string",
@@ -932,6 +953,11 @@
                   "data"
                 ],
                 "default": "test"
+              },
+              "success_when_silent": {
+                "type": "boolean",
+                "default": false,
+                "description": "For tools that print nothing on success (type checkers, linters): the gate passes when a Bash command starting with `command` produced empty output."
               }
             }
           },

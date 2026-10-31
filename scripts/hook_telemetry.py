@@ -3,19 +3,56 @@
 
 Writes JSONL entries to <project>/.claude/hook-log.jsonl. Every entry carries
 the hook name, event, decision, and duration; when the hook input is given,
-also a short session id and, for file tools, the project-relative path. Those
-two fields let /report and /evolve see which files rules fire on.
+also a short session id and, for file tools, the project-relative path.
+
+The log never stores tool content: command previews are masked so that
+tokens, keys, and passwords in a denied command are not written to disk.
 
 All operations are fail-open: logging errors are silently swallowed so they
 never interfere with hook decisions.
 """
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 
 MAX_LOG_SIZE = 5 * 1024 * 1024  # 5 MB
 ROTATION_SUFFIX = ".1.jsonl"
+
+_TOKEN_RE = re.compile(r"\S{16,}")
+
+
+def mask(text, limit=160):
+    """Shorten text and replace any long unbroken token with a placeholder."""
+    if not isinstance(text, str):
+        return ""
+    return _TOKEN_RE.sub("<token>", text[:limit])
+
+
+def find_claude_dir(start=None):
+    """Nearest `.claude/` walking up from `start` (or cwd).
+
+    Stops at the first directory that contains `.git` (after checking it), and
+    never returns the user's own `~/.claude`, so a project without a `.claude/`
+    cannot be mistaken for the home directory's.
+    """
+    try:
+        home_claude = os.path.normcase(os.path.join(os.path.expanduser("~"), ".claude"))
+        current = os.path.abspath(start) if start and os.path.isdir(start) else os.getcwd()
+        for _ in range(12):
+            candidate = os.path.join(current, ".claude")
+            if os.path.isdir(candidate) and os.path.normcase(candidate) != home_claude:
+                return candidate
+            if os.path.exists(os.path.join(current, ".git")):
+                return None
+            parent = os.path.dirname(current)
+            if parent == current:
+                break
+            current = parent
+    except Exception:
+        pass
+    return None
 
 
 class TelemetryLogger:
@@ -25,25 +62,8 @@ class TelemetryLogger:
         self.matcher = matcher
         self.start_time = time.monotonic()
         start = hook_input.get("cwd") if isinstance(hook_input, dict) else None
-        self._log_dir = self._find_log_dir(start)
+        self._log_dir = find_claude_dir(start)
         self.base = self._base_context(hook_input)
-
-    @staticmethod
-    def _find_log_dir(start=None):
-        """Locate .claude/ by walking up from the hook's cwd (or the process cwd)."""
-        try:
-            current = start if start and os.path.isdir(start) else os.getcwd()
-            for _ in range(10):
-                claude_dir = os.path.join(current, ".claude")
-                if os.path.isdir(claude_dir):
-                    return claude_dir
-                parent = os.path.dirname(current)
-                if parent == current:
-                    break
-                current = parent
-        except Exception:
-            pass
-        return None
 
     def _base_context(self, hook_input):
         base = {}
@@ -108,3 +128,13 @@ class TelemetryLogger:
                 os.rename(log_path, rotated)
         except Exception:
             pass
+
+
+class NullLogger:
+    """Stand-in when hook_telemetry cannot be imported: hooks still judge."""
+
+    def __init__(self, *args, **kwargs):
+        self.base = {}
+
+    def log(self, *args, **kwargs):
+        pass

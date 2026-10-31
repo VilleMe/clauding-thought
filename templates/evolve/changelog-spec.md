@@ -59,7 +59,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Security rule: CSRF check now covers API routes
 
 ### Removed
-- Deprecated `patterns/blade.md` — project fully moved to Inertia
+- Deprecated `patterns/template-view.md`; the project no longer renders server-side templates
 
 ### Fixed
 - False positive: QC was flagging scoped queries as unscoped
@@ -79,7 +79,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Architecture rules: module boundaries, layer enforcement
 - Convention rules: naming, validation, translations
 - Pattern files: one per archetype
-- Skills: preflight, qc, evolve, task-doc, close-task, report
+- Skills: preflight, qc, qc-fix, evolve, task-doc, close-task
 ```
 
 ## When to Update

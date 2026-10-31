@@ -30,17 +30,17 @@ The scaffold creates the directory tree, copies the hook scripts, merges the gov
 
 ## Update Mode
 
-If the scaffold output shows `"mode": "update"`, follow its `next_steps` list and do nothing else:
+If the scaffold output shows `"mode": "update"`, work through its `next_steps` list in order; it is computed from what the project already has. The list can contain:
+- A `STOP` item first when the self-test failed: show the failed rows from `.claude/selftest.json` and go no further.
 - Set `governance.plugin_version` in `.claude/manifest.json` to the scaffold's `plugin_version`.
-- If the manifest has no `verification` block, add one: `test_command` and one `kind: "test"` gate from the project's test runner (see Step 1 for detection), `claim_guard: "annotate"`, `claim_window_turns: 1`, `llm_judge: false`. If the manifest has no `task_docs.headings`, add `{ "scope": "Scope", "thesis": "Thesis" }`.
-- If `task_doc_skill_has_scope` is `false`, regenerate `.claude/skills/task-doc/SKILL.md` so new task docs carry a `## <scope heading>` section (see Step 4c). Keep every other section and customisation the project added.
-- Add an `[Unreleased]` entry to `.claude/CHANGELOG.md` naming what was refreshed.
-- Report what was refreshed, the retired files, and the self-test summary. STOP.
+- Add a `verification` block when missing: `test_command` and one `kind: "test"` gate from the project's test runner (see Step 1), `claim_guard: "annotate"`, `claim_window_turns: 1`, `llm_judge: false`. Add `task_docs.headings` when missing, using the headings this project's task docs already use.
+- Regenerate a generated skill when the scaffold's `skill_state` says it predates a convention (no scope or thesis section in task-doc, no `/verify` in close-task, no telemetry step in evolve, no scorer in preflight, no `context: fork` in qc), per Steps 4c and 4h. Regenerating means rewriting the plugin-specified parts and keeping every section, rule ID, example and customisation the project added; say in the changelog what was kept.
+- Generate `agents/qc-reviewer.md` or `skills/qc-fix/SKILL.md` when missing.
+- Tell the user about files the scaffold kept because the plugin did not write them (`left_alone`).
+- Add an `[Unreleased]` entry to `.claude/CHANGELOG.md` naming what was refreshed, retired and kept.
+- Report what was refreshed, what was retired, and the self-test summary.
 
-- If `.claude/agents/qc-reviewer.md` or `.claude/skills/qc-fix/SKILL.md` is missing (projects scaffolded before 3.2), generate them per 4c and 4h, and add `context: fork`, `agent: qc-reviewer`, `background: false` to the existing qc skill's frontmatter if absent. If the manifest has no `task_docs.complexity`, leave it absent; the scorer uses its defaults.
-- If the task-doc skill does not write the thesis section, or the close-task skill does not run the thesis check, or the evolve skill has no telemetry step (projects scaffolded before 3.3): regenerate those skills per 4c, preserving the project's customisations. Existing task docs are not edited; one without a thesis section is handled by close-task when it closes.
-
-Do NOT re-analyze. Do NOT touch preflight, evolve, close-task, rules, or patterns beyond the items above.
+Existing task docs are never edited by an update. Do NOT re-analyze the codebase, and do not touch rules or patterns in update mode.
 
 ---
 
@@ -135,7 +135,7 @@ Every file must be specific to THIS project. No generic boilerplate.
 
 ### 4a. `.claude/manifest.json`
 
-Follow the schema at the `schema` path from the scaffold output. Fill every field you can determine with confidence; use `null` for the rest. Set `version` to `"1.1"`.
+Follow the schema at the `schema` path from the scaffold output. Fill every field you can determine with confidence and omit the rest; the schema accepts `null` only for `governance.last_evolved`. Set `version` to `"1.1"`.
 
 Governance, task-doc, and verification blocks:
 ```json
@@ -188,7 +188,7 @@ The governance summary, loaded in every session. Structure:
 7. **Where business logic goes**
 8. **Security enforcement**: the blocking rules, one line each
 9. **Pre-commit checklist**: ordered checks before finishing a change
-10. **Governance workflow**: one line each for `/preflight` (which also scores complexity and says whether to enter plan mode first), `/task-doc`, `/qc` (runs in a read-only subagent and returns a `QC_VERDICT` block; whoever ran it appends that block to the active task doc's `## QC` section), `/qc-fix` (the bounded fix-and-recheck loop), `/close-task`, `/evolve`, `/clauding-thought:report`, where the detailed rules live (`.claude/rules/`, `.claude/patterns/`), and the hooks in force: writes outside the active task's `## Scope` are denied, claims about data need a declared gate, test claims need test output.
+10. **Governance workflow**: one line each for `/preflight` (which also scores complexity and says whether to enter plan mode first), `/task-doc`, `/qc` (runs in a read-only subagent and returns a `QC_VERDICT` block; whoever ran it appends that block to the active task doc's `## QC` section), `/qc-fix` (the bounded fix-and-recheck loop), `/close-task`, `/evolve`, `/clauding-thought:report`, where the detailed rules live (`.claude/rules/`, `.claude/patterns/`), and the hooks in force: while a task is active, writes outside its `## <scope heading>` are denied, and so are writes to the governance files under `.claude/` (rules, scripts, settings, manifest, skills, agents) unless the scope lists them; claims about data need a declared data gate; test claims need a passing Bash test run in the turn.
 
 Keep it under 200 lines. Detail belongs in the rule files.
 
@@ -208,11 +208,11 @@ allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 ```
 It classifies the task by archetype, loads only the matching rule sections and pattern files, lists sibling files to imitate, names the security surface, proposes the path globs the task will need (these become the task doc's scope section), and recommends a task doc when the change meets `task_docs.auto_create_threshold`.
 
-It then scores complexity by running the scorer with the files it expects the task to touch (project-relative), adding `--new-archetype` when the task creates a file type with no sibling:
+It then scores complexity by running the scorer, exactly as written and without changing directory, with the files it expects the task to touch, adding `--new-archetype` when the task creates a file type with no sibling:
 ```bash
-python .claude/scripts/complexity.py --files <file> <file> ... [--new-archetype]
+python .claude/scripts/complexity.py --project "${CLAUDE_PROJECT_DIR}" --files <file> <file> ... [--new-archetype]
 ```
-The brief MUST print the returned score, tier, and factors, and route on the tier:
+The output's `claude_dir` must be this project's. The brief MUST print the returned score, tier, and factors, and route on the tier:
 - **trivial**: proceed with the brief.
 - **medium**: tell the user to enter plan mode before any edit, and list what the plan must contain: target files and order, the pattern each file follows, security and tenancy implications, and the rollback story. The brief ends there; coding starts after the plan is approved.
 - **high**: as medium, and additionally decompose the work into sub-tasks, each with its own task doc and scope section, before any edit.
@@ -230,7 +230,7 @@ agent: qc-reviewer
 background: false
 ---
 ```
-`context: fork` runs the body in the `qc-reviewer` subagent (generated in 4h) with no conversation history, and `background: false` returns its result in the invoking turn. The body therefore MUST gather its own inputs: run `git diff` and `git diff --cached` (or, with `--full`, read every file under the active task doc's scope section), read `.claude/manifest.json`, the rule files, the matching pattern files, and the active task doc's Suppressions table. It MUST end by returning the `QC_VERDICT` block as its entire result, with nothing after it.
+`context: fork` runs the body in the `qc-reviewer` subagent (generated in 4h) with no conversation history, and `background: false` returns its result in the invoking turn. The body therefore MUST gather its own inputs: read the active task doc and, when it records a `base_commit`, diff against it (`git diff <base_commit>` plus uncommitted changes), otherwise `git diff` and `git diff --cached`; with `--full`, read every file under the task's scope section instead. Read `.claude/manifest.json`, the rule files, the matching pattern files, and the task doc's Suppressions table. When `verification.test_command` is set, run it once and report the result on the verdict's `tests:` line. It MUST end by returning the `QC_VERDICT` block as its entire result, with nothing after it.
 
 The body MUST embed these behavioural rules:
 1. **Report, don't judge.** Report each violation with its rule ID and severity. Never downgrade a finding as "acceptable", "a deliberate tradeoff", "minor", or "justified". The developer decides what to suppress.
@@ -243,10 +243,13 @@ The body MUST embed these behavioural rules:
 The `QC_VERDICT` block:
 ```
 QC_VERDICT: PASS | WARN | BLOCK
+  reviewed_at:  <ISO 8601 timestamp>
+  base:         <base_commit or "uncommitted changes">
   security:     <findings or "none">
   architecture: <findings or "none">
   conventions:  <findings or "none">
   suppressed:   <rule IDs skipped via the Suppressions table>
+  tests:        <test command and its result, or "not run">
   files_reviewed: N
 ```
 
@@ -262,7 +265,7 @@ user-invocable: true
 allowed-tools: ["Read", "Edit", "Write", "Glob", "Grep", "Bash"]
 ---
 ```
-The body: run `/qc` and read the verdict. If PASS, append it to the active task doc's `## QC` section and stop. Otherwise, for at most `--max-cycles` cycles (default 3): launch a fix pass as a subagent whose prompt contains only the verdict, the affected files, and the violated rule sections, with the instruction to change nothing else; then run `/qc` again; append each verdict, with the cycle number and the files changed, to `## QC`. If the verdict is still BLOCK after the last cycle, stop, print the history of the cycles, and say what remains, without softening it. The cap is not configurable above 5: self-correction degrades past a few iterations.
+The body: run `/qc` and read the verdict. If PASS, append it to the active task doc's `## QC` section and stop. Otherwise, for at most `--max-cycles` cycles (default 3, hard maximum 5; self-correction degrades past a few iterations): launch a fix pass as a subagent whose prompt contains only the verdict, the affected files, and the violated rule sections, with the instruction to change nothing else; then run `/qc` again; append each verdict, with the cycle number and the files changed, to `## QC`. If the verdict is still BLOCK after the last cycle, stop, print the history of the cycles, and say what remains, without softening it.
 
 **`evolve`** — re-analysis and rule maintenance. Frontmatter:
 ```yaml
@@ -273,13 +276,13 @@ user-invocable: true
 allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 ```
-It re-runs Steps 1-3, diffs against the stored manifest, reads `## Rule Candidates` entries from task docs closed since `last_evolved`, proposes rule and pattern changes, and on acceptance updates the files, `governance.version`, `last_evolved`, and the changelog per `skills/evolve/changelog-spec.md`. Pack sections between `<!-- pack:... -->` markers are updated only when not customized.
+It re-runs Steps 1-3, diffs against the stored manifest, reads `## Rule Candidates` entries from task docs closed since `last_evolved`, proposes rule and pattern changes, and on acceptance updates the files, `governance.version`, `last_evolved`, and the changelog per `.claude/skills/evolve/changelog-spec.md`. Pack sections between `<!-- pack:... -->` markers are compared with the originals the scaffold copied to `.claude/packs/<name>/` and updated only when not customized.
 
-It MUST include a **telemetry** step before proposing anything. Run the aggregator for the window since the last evolve:
+It MUST include a **telemetry** step before proposing anything. Run the aggregator, exactly as written and without changing directory, for the window since the last evolve:
 ```bash
-python .claude/scripts/report_data.py --since <governance.last_evolved or the initialized date>
+python .claude/scripts/report_data.py --project "${CLAUDE_PROJECT_DIR}" --since <governance.last_evolved or the initialized date>
 ```
-and read from its output: `tasks.rule_candidates.items` (lessons that `/close-task` filed as rule candidates since the last evolve), `hooks[].top_files` and `top_reasons` (where the guards keep firing), `tasks.scope_coverage` and `tasks.thesis_coverage`, `verification.data_gates`, and `rules` (sizes and scoping). Then read the `## Suppressions` tables of the task docs in the window. Turn these into proposals through the same approval flow as drift, each citing its evidence:
+confirm the output's `claude_dir` is this project's, and read from it: `tasks.rule_candidates.items` (lessons that `/close-task` filed as rule candidates since the last evolve), `hooks[].top_files` and `top_reasons` (where the guards keep firing), `tasks.scope_coverage` and `tasks.thesis_coverage`, `verification.data_gates`, and `rules` (sizes and scoping). Then read the `## Suppressions` tables of the task docs in the window. Turn these into proposals through the same approval flow as drift, each citing its evidence:
 - a rule candidate → a new or amended rule section in the right tier, with the wording the task proposed;
 - the same rule suppressed in three or more tasks → relax or clarify that rule, or record a permanent exception in it;
 - a path that `scope-guard` keeps denying across tasks → propose it for the task-doc skill's scope suggestions or as a module boundary;
@@ -299,16 +302,18 @@ user-invocable: true
 allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 ```
-New task docs go in `.claude/<task_docs.directory>/YYYY-MM-DD-slug.md` with `status: open` near the top and these sections, in this order, using the heading names from `task_docs.headings` for scope and thesis:
+Before creating a task doc, check for another active one (`status: open` or `in_progress`). The scope guard reads only the most recently modified active doc, so a second active task silently changes which scope is enforced: ask the user to close the other task or set its status to `paused` first, and refuse to create a second active doc otherwise.
+
+New task docs go in `.claude/<task_docs.directory>/YYYY-MM-DD-slug.md` with `status: open` and `base_commit: <output of git rev-parse HEAD>` near the top, and these sections, in this order, using the heading names from `task_docs.headings` for scope and thesis:
 - `## Intent`
-- `## <scope heading>` — one path glob per line, as a markdown list, naming the files this task may write to (for example `- src/billing/**`). The `scope-guard` hook denies writes outside this list while the task is active, and the denial tells the model to either log the discovery here under Implementation or extend this list as a visible decision. Preflight proposes the initial globs.
+- `## <scope heading>` — one path per line, as a markdown list, naming the files this task may write to (`- src/billing/**`; a bare directory means everything under it). The `scope-guard` hook denies writes outside this list while the task is active, and also writes to the governance files under `.claude/` (rules, patterns, skills, scripts, agents, settings, manifest) unless the list names them, so a task that is meant to change a rule writes `- .claude/rules/**` here. The denial tells the model to either log the discovery under Implementation or extend this list as a visible decision. Preflight proposes the initial globs.
 - `## <thesis heading>` — three labelled lines:
   ```markdown
   **Claim:** <one sentence, from the user's point of view, that is false until this task ships>
   **Observable:** <the exact output, screen, row, or response that shows the claim is true>
   **Demonstrated:**
   ```
-  `Demonstrated:` stays empty until `/close-task` runs the demonstration. A task with no user-visible outcome (a refactor, a dependency bump, tooling) writes `no-user-observable-change: true` on its own line near the top instead of this section, with one sentence under Intent saying why.
+  `Demonstrated:` stays empty until `/close-task` runs the demonstration; when filled it starts with the timestamp and says how: `2026-10-30T10:00Z via /verify: <what was observed>` for a run, or `2026-10-30 attested by <who>: <where it was seen>` when a person saw it somewhere the session cannot reach. A date on its own does not count. A task with no user-visible outcome (a refactor, a dependency bump, tooling) writes `no-user-observable-change: true` on its own line near the top instead of this section, with one sentence under Intent saying why; a task whose outcome exists but cannot be shown from this machine (needs production data, a deployed environment, a scheduled job) writes `cannot-demonstrate-here: <reason>` and keeps the section for an attestation.
 - `## Plan`
 - `## Implementation` — running log of decisions, discoveries, and files changed
 - `## QC` — verdicts appended by `/qc` and `/qc-fix`
@@ -329,13 +334,14 @@ allowed-tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"]
 ---
 ```
 Pre-close checks, in order:
-1. The latest QC verdict in `## QC` is not BLOCK.
+1. **A review has run on the final code.** `## QC` holds a `QC_VERDICT` with `files_reviewed` above zero and a `reviewed_at` later than the last change to any file in the task's scope (`git log -1 --format=%cI -- <scope paths>`, and the working tree has no newer uncommitted change to them), and it is not BLOCK. An empty QC section, a verdict that reviewed nothing, or one older than the code refuses close: run `/qc` first.
 2. The Implementation section is not empty, and every Suppressions row has a reason.
 3. **The thesis is demonstrated.** If the doc carries `no-user-observable-change: true`, skip this check and say so. Otherwise read the `## <thesis heading>` section:
-   - If it is missing, or Claim or Observable is empty: refuse to close. Ask the author for the claim and the observable, or for the opt-out line with a reason.
-   - If `Demonstrated:` is empty: invoke the bundled `/verify` skill with the Claim as what to confirm and the Observable as the acceptance criterion. If it confirms the observable, write `**Demonstrated:** <ISO 8601 timestamp> via /verify: <one line on what was observed>` into the section. If it cannot confirm it, refuse to close and report exactly what differed from the Observable, without softening it.
-   - If `Demonstrated:` already carries a date, accept it.
-   Never fill in `Demonstrated:` without a run that showed the Observable.
+   - If it is missing, or Claim or Observable is empty: refuse to close. Ask the author for the claim and the observable, or for one of the opt-out lines with a reason.
+   - If `Demonstrated:` is empty and the doc does not carry `cannot-demonstrate-here`: invoke the bundled `/verify` skill with the Claim as what to confirm and the Observable as the acceptance criterion. If it confirms the observable, write `**Demonstrated:** <ISO 8601 timestamp> via /verify: <one line on what was observed>` into the section. If it cannot confirm it, refuse to close and report exactly what differed from the Observable, without softening it.
+   - If the doc carries `cannot-demonstrate-here: <reason>` and `Demonstrated:` is empty: ask the user whether they have seen the Observable somewhere (staging, production, a colleague's run). If yes, write `**Demonstrated:** <date> attested by <their name>: <where>`; if no, refuse to close.
+   - If `Demonstrated:` already starts with a date followed by `via` or `attested by`, accept it. A bare date, or a date with no "how", does not count: treat it as empty.
+   Never fill in `Demonstrated:` without a run that showed the Observable or a named person who did.
 Then: record the commit reference, write `## Lessons`, add any lesson that should become a permanent rule under `## Rule Candidates` as a markdown list (one item per candidate: tier, proposed wording, the task that motivated it), set `status: closed`, update the task index.
 
 ### 4d. Pattern files
@@ -352,7 +358,7 @@ Claude Code reads the `paths:` frontmatter natively: a rule file with `paths:` i
 
 Keep each rule file under 12 KB. If the project has more to say, make another scoped file rather than a longer one.
 
-**Per-module rule files.** When `architecture.modules` has more than one entry, write one `.claude/rules/<module>.md` per module with `paths:` set to that module's path, holding only what is specific to that module: its allowed imports from `boundaries.modules_may_import`, its own conventions, and any security checks whose `paths` fall inside it. The shared architecture and conventions files keep what applies everywhere. A module file with nothing specific to say is not written.
+**Per-module rule files.** When `architecture.modules` has more than one entry, write one `.claude/rules/<module>.md` per module with `paths: ["<module path>/**"]` (the manifest's `modules[].path` is a directory; the rule file needs the glob), holding only what is specific to that module: its allowed imports from `boundaries.modules_may_import`, its own conventions, and any security checks whose `paths` fall inside it. The shared architecture and conventions files keep what applies everywhere. A module file with nothing specific to say is not written.
 
 Also set the `<!-- scope: -->` annotations on sections to the archetype globs from Step 2, and `<!-- severity: -->` on sections that deviate from the tier default.
 
@@ -404,9 +410,9 @@ description: "Read-only reviewer for this project's declared governance rules. U
 tools: Read, Glob, Grep, Bash
 ---
 
-You review changes in <project name> against the rules in `.claude/rules/` and the manifest in `.claude/manifest.json`. You do not edit files. Bash is for `git diff`, `git diff --cached`, `git status`, and `git log`, nothing else. You report every violation with file, line, rule ID, and the rule section; you never downgrade a finding; you skip a finding only when the active task doc's Suppressions table lists its rule ID. Your entire result is one QC_VERDICT block.
+You review changes in <project name> against the rules in `.claude/rules/` and the manifest in `.claude/manifest.json`. You never create, edit, move or delete a file, through any tool, including shell redirection. Bash is for `git diff`, `git diff --cached`, `git status`, `git log`, and the project's test command (`<verification.test_command>`), nothing else. You report every violation with file, line, rule ID, and the rule section; you never downgrade a finding; you skip a finding only when the active task doc's Suppressions table lists its rule ID. Your entire result is one QC_VERDICT block.
 ```
-Fill in the project name and, if the manifest names a test command, allow Bash to run it as well so QC can confirm the suite still passes.
+Fill in the project name and the test command (omit the test-command clause when the manifest has none). Bash is not sandboxed inside the subagent: the write prohibition is a rule the reviewer follows, not a wall, and the scope guard does not see Bash writes. Keep the agent's tools to Read, Glob, Grep, Bash.
 
 ## Step 5: VERIFY — Calibrate
 
@@ -419,6 +425,7 @@ Fill in the project name and, if the manifest names a test command, allow Bash t
    ```bash
    python "${CLAUDE_PLUGIN_ROOT}/scripts/selftest.py" --project "${CLAUDE_PROJECT_DIR}"
    ```
+7. If the user wants a hook off, the way is `governance.disabled_hooks` in the manifest (hook names without `.py`), then `--update`. Deleting a hook entry from settings.json by hand makes the self-test fail on purpose.
 
 ## Output
 

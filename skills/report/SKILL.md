@@ -43,7 +43,8 @@ GOVERNANCE_REPORT
     last_evolved: <governance.last_evolved or "never">
     days_since_evolve: <governance.days_since_evolve or "n/a">
 
-  self_test: <selftest.status> <selftest.passed>/<selftest.total> on <selftest.ran_at>   # or "never run"
+  self_test: <selftest.status> <selftest.passed>/<selftest.total> on <selftest.ran_at> via <selftest.interpreter>   # or "never run"; add "STALE" when selftest.stale
+  disabled_hooks: <governance.disabled_hooks or "none">
 
   hooks:                       # one block per hook in the JSON
     <hook_name>:
@@ -60,8 +61,10 @@ GOVERNANCE_REPORT
 
   thesis:                                    # from tasks.thesis_coverage, last 10 task docs
     with a thesis section: <with_thesis> of <of>
-    demonstrated: <demonstrated>
+    demonstrated by a run: <demonstrated>
+    attested by a person: <attested>
     opted out (no user-observable change): <opted_out>
+    cannot demonstrate here: <cannot_demonstrate>
 
   rule_candidates_pending: <tasks.rule_candidates.pending> (since <tasks.rule_candidates.since or "init">)
 
@@ -101,7 +104,8 @@ Then 3-6 sentences of prose. Lead with the most useful signal. A hook with zero 
 
 Every recommendation cites a number from the data.
 
-- Self-test never run, failed, or older than the plugin version: run `/clauding-thought:init --update`.
+- Self-test never run, failed, or `selftest.stale` (run by an older plugin version): run `/clauding-thought:init --update`.
+- A hook in `governance.disabled_hooks`: say it is off by choice, not inert.
 - Scope section present in fewer than half of the last 10 task docs: `scope-guard` cannot fire for those tasks; regenerate the task-doc skill (`/clauding-thought:init --update` does this) or add the section by hand.
 - `multiple_active_tasks_seen` > 0: more than one task doc is open at once, so scope-guard is reading the newest one; close or pause the others.
 - No data gates declared and `claim-guard` annotated more than 3 times: add the check that would prove those claims to `verification.gates` with `kind: "data"`.
@@ -109,7 +113,7 @@ Every recommendation cites a number from the data.
 - A hook with `block` or `feedback` > 10 in the window: name the hook, say what it keeps catching, and ask whether the rule or the workflow should change.
 - The same suppressed rule in more than 3 tasks: update the rule or add a permanent exception via `/evolve`.
 - Stale open tasks: close, defer, or document why.
-- Thesis: `demonstrated` below half of `with_thesis` means tasks are closing without their demonstration; `opted_out` above half of `of` means the opt-out is being used as a default, and the report says so.
+- Thesis: `demonstrated` plus `attested` below half of `with_thesis` means tasks are closing without their demonstration; `opted_out` above half of `of` means the opt-out is being used as a default; `attested` above `demonstrated` means most proof is second-hand. The report says which.
 - `tasks.rule_candidates.pending` > 0 or `days_since_evolve` > 30: run `/evolve`; its telemetry step reads the same aggregator output.
 
 If nothing triggers: "No actionable signals in this window."

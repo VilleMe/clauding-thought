@@ -82,16 +82,16 @@ Then in the project:
 
 | Hook | Event | What it does |
 |------|-------|--------------|
-| `secret-filter` | PreToolUse on Write, Edit, MultiEdit, NotebookEdit | Denies writes containing cloud keys, private keys, provider tokens, connection strings with passwords, hardcoded credentials |
-| `scope-guard` | PreToolUse on Write, Edit, MultiEdit, NotebookEdit | Denies writes outside the active task doc's scope section. The denial is a fork: log the discovery and stay in scope, or extend the scope as a visible decision. Inert without an active task |
-| `destructive-guard` | PreToolUse on Bash | Denies `rm -rf` on root, home or cwd, force pushes without lease, `git reset --hard`, `git clean -f`, destructive SQL, `chmod 777`, `dd` to devices, `mkfs` |
-| `anti-rationalization` | Stop | Pushes back once when the final response dismisses an issue ("out of scope", "pre-existing", "acceptable tradeoff") without committing to fix or track it |
-| `evidence-check` | Stop | Pushes back once when the final response claims tests pass or the build succeeds but no test, build, or declared gate output appears in the turn's tool results |
-| `claim-guard` | Stop | Notes (or, in block mode, pushes back) when the final response asserts a fact about data or state with no declared data gate output in the turn. Claims labelled `VERIFIED`, `HYPOTHESIS`, or `evidence:` are exempt |
+| `secret-filter` | PreToolUse on Write, Edit, MultiEdit, NotebookEdit | Denies writes containing cloud and provider keys, private keys of any kind, JWTs, webhook URLs, connection strings with real passwords, and credential assignments in JSON, YAML, env-file and code forms. Templated values, environment lookups, placeholders, test values and local dev defaults pass |
+| `scope-guard` | PreToolUse on Write, Edit, MultiEdit, NotebookEdit | Denies writes outside the active task doc's scope section, and writes to the governance files under `.claude/` (rules, scripts, settings, manifest, skills, agents) unless the scope lists them. The denial is a fork: log the discovery and stay in scope, or extend the scope as a visible decision. Inert without an active task |
+| `destructive-guard` | PreToolUse on Bash | Tokenises the command (splitting on `;`, `&&`, `\|`, newlines) and judges each piece: recursive forced `rm` on the tree root, parent, home, a glob or a variable; force pushes without lease, `+refspec`, `git reset --hard`, `git clean -f`, `git checkout .`, deleting protected branches; destructive SQL, also inside a database client's quoted argument; `chmod 777`, `dd` to a device, `mkfs`; `find -delete` over a whole tree with no filter. Quoted mentions, dry runs and narrowed finds pass |
+| `anti-rationalization` | Stop, only while a task is active | Pushes back once when the final response sets a finding aside ("out of scope", "pre-existing", "unrelated to this task", "flaky", "won't fix") without recording it with a reference or handling it now. Scoping the user asked for and the programming sense of "scope" are exempt |
+| `evidence-check` | Stop | Pushes back once when the final response claims tests pass or the build succeeds but no Bash result in the turn shows a passing run with no failures. File reads, echoes and partial-failure output do not count; a declared gate's success pattern or silent success does |
+| `claim-guard` | Stop | Notes (or, in block mode, pushes back) when the final response asserts a fact about data or state with no declared data gate output from a Bash result in the turn. A label placed before the claim on its line (`VERIFIED`, `HYPOTHESIS`, `evidence:`) exempts it |
 
-All hooks fail open: a parse error or crash never blocks the tool. Every decision is logged to `.claude/hook-log.jsonl`, which the report skill aggregates. Stop hooks honour `stop_hook_active`, so they fire at most once per turn.
+Every hook reads its input as UTF-8 regardless of the console code page. A hook that cannot judge because of an internal error says so on stderr with a non-blocking exit, never silently. Decisions are logged to `.claude/hook-log.jsonl` with the session id and the file path, never with file or command contents; the scaffold adds the log and the self-test result to `.gitignore`. Stop hooks honour `stop_hook_active`, so they fire at most once per turn.
 
-**Self-test.** The scaffold ends by running `scripts/selftest.py`: it builds throwaway fixture projects, pipes realistic input through every installed hook, checks each decision, and checks that `settings.json` registers each hook under the right event. Results go to `.claude/selftest.json`. A hook that does not fire in the self-test is reported as failed, and the init skill stops.
+**Self-test.** The scaffold ends by running `scripts/selftest.py`: it builds throwaway fixture projects (one in a directory with a non-ASCII name), sends realistic UTF-8 input through every installed hook, and checks both the decision the hook returned and the decision and reason it logged, so an allow row proves the hook reached the branch it was meant to reach rather than crashing into fail-open. It also checks that `settings.json` registers each hook under the right event with a matcher covering the tools it needs and an interpreter that exists on PATH, that hooks disabled in the manifest are absent, and that no settings file sets `disableAllHooks`. Results go to `.claude/selftest.json`; the init skill stops on any failure.
 
 **Optional LLM judge.** With `verification.llm_judge: true` in the manifest, the scaffold also registers a prompt-type Stop hook that asks the background model whether the response dismissed a finding or asserted a data fact without evidence. One model call per turn end; off by default.
 
@@ -137,14 +137,15 @@ All hooks fail open: a parse error or crash never blocks the tool. Every decisio
 
 ## What it costs
 
-- Every hook event launches one Python interpreter. On a busy session that is a few thousand launches a day, each a few tens of milliseconds. The guards are registered on broad matchers on purpose: a prefix filter such as `Bash(rm *)` would miss compound commands, which is the case the guard exists for.
-- Hook commands use `python` on Windows and `python3` elsewhere. Teams on mixed machines should check `settings.json` after the scaffold runs.
-- Bash-side writes (`echo > file`, heredocs) bypass `scope-guard` and `secret-filter`; those hooks see the file tools only.
-- To disable a hook, delete its entry from `.claude/settings.json`; the scaffold will not re-add a hook you removed unless you run `--update`.
+- A file write launches two interpreters (`secret-filter`, `scope-guard`), a Bash call one, and the end of every turn three (the Stop hooks), each a few tens of milliseconds. The guards are registered on broad matchers on purpose: a prefix filter such as `Bash(rm *)` would miss compound commands, which is the case the guard exists for.
+- Hook commands use `python` on Windows and `python3` elsewhere. The self-test fails when the registered interpreter is not on the PATH, so a team on mixed machines finds out at scaffold time.
+- Bash-side writes (`echo > file`, heredocs) bypass `scope-guard` and `secret-filter`; those hooks see the file tools only. The reviewer subagent is read-only by instruction, not by sandbox.
+- The guards are heuristics on the shapes seen so far, not a security boundary. Claude Code's own permission rules and sandbox remain the boundary where they apply.
+- To turn a hook off, list it in `governance.disabled_hooks` in the manifest and run `--update`. The scaffold then leaves it out and the self-test expects it to be absent. Deleting the entry from `settings.json` by hand makes the self-test fail on purpose.
 
 ## Rule packs
 
-`packs/` holds reusable rule sets that the init skill offers when their `stack_filter` matches. The bundled `owasp-top-10` pack covers injection, authentication failures, sensitive data exposure, and security misconfiguration with language-neutral examples. See `packs/README.md` to write one.
+`packs/` holds reusable rule sets that the init skill offers when their `stack_filter` matches. The bundled `owasp-top-10` pack covers injection, authentication failures, sensitive data exposure, and security misconfiguration, with good and bad examples in several languages. Applied packs are copied into the project so `/evolve` can tell a customised section from an untouched one. See `packs/README.md` to write one.
 
 ## Repository layout
 
@@ -161,6 +162,10 @@ clauding-thought/
 ├── packs/                 rule packs
 └── schema/                manifest schema
 ```
+
+## Changes in 3.4
+
+A fix release from an adversarial review of 3.3 (three independent reviewers, every finding reproduced). The scaffold reads settings and manifest before touching anything, refuses a settings file it cannot parse instead of replacing it, keeps a backup, owns hooks by the script they run from `.claude/scripts/` rather than by file name, and retires only files whose text shows the plugin wrote them. `destructive-guard` judges tokenised commands instead of regexes over the whole string, which closes the `rm -r -f .`, `rm -rf *`, `+refspec` and `git clean -d --force` gaps, stops flagging greps, dry runs and `-var-file`, and removes a pattern that took seconds on long tokens. `secret-filter` detects JSON, YAML, env-file and backtick credential forms, encrypted and PGP keys, JWTs and webhooks, and stops flagging CSS class names and local dev defaults. `evidence-check` accepts only Bash results, rejects partial failures, ties evidence to the kind of claim, and supports silent-success gates. `claim-guard` claims must name data or state, and a label exempts only when it precedes the claim. `anti-rationalization` runs only during a task, needs a reference or an immediate commitment to pass, and exempts scoping the user asked for and the programming sense of scope. `scope-guard` resolves real paths (prefixes, short names, junctions), takes relative paths against the hook's cwd, parses scope lines as people write them, finds the section at any heading level, reads task docs in subfolders and any encoding, and no longer exempts the governance files under `.claude/`. All hooks read UTF-8 input and report internal errors visibly. Task docs record a base commit, the QC verdict carries its time and base, close-task requires a review newer than the code and a demonstration with a stated method, and a change that cannot be shown locally has an honest opt-out. The self-test asserts the logged reason for every row, runs a non-ASCII fixture, checks interpreters, matchers and `disableAllHooks`, and covers the adversarial cases above. The aggregator parses every status form the same way, reads inline and unindented `paths:` lists, dates rule candidates by the task's closed date, and rejects a bad window. Hooks can be turned off through `governance.disabled_hooks`. The captured transcript fixture was re-sanitised with JSON-aware scrubbing.
 
 ## Changes in 3.3
 
