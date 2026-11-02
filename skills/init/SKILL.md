@@ -34,7 +34,7 @@ If the scaffold output shows `"mode": "update"`, work through its `next_steps` l
 - A `STOP` item first when the self-test failed: show the failed rows from `.claude/selftest.json` and go no further.
 - Set `governance.plugin_version` in `.claude/manifest.json` to the scaffold's `plugin_version`.
 - Add a `verification` block when missing: `test_command` and one `kind: "test"` gate from the project's test runner (see Step 1), `claim_guard: "annotate"`, `claim_window_turns: 1`, `llm_judge: false`. Add `task_docs.headings` when missing, using the headings this project's task docs already use.
-- Regenerate a generated skill when the scaffold's `skill_state` says it predates a convention (no scope or thesis section in task-doc, no `/verify` in close-task, no telemetry step in evolve, no scorer in preflight, no `context: fork` in qc), per Steps 4c and 4h. Regenerating means rewriting the plugin-specified parts and keeping every section, rule ID, example and customisation the project added; say in the changelog what was kept.
+- Regenerate a generated skill when the scaffold's `skill_state` says it predates a convention (no scope or thesis section in task-doc, no `/verify` in close-task, no telemetry step in evolve, no scorer in preflight, no `context: fork` or `test:<name>` findings in qc, no diagnosis and undo steps in qc-fix), per Steps 4c and 4h. Regenerating means rewriting the plugin-specified parts and keeping every section, rule ID, example and customisation the project added; say in the changelog what was kept.
 - Generate `agents/qc-reviewer.md` or `skills/qc-fix/SKILL.md` when missing.
 - Tell the user about files the scaffold kept because the plugin did not write them (`left_alone`).
 - Add an `[Unreleased]` entry to `.claude/CHANGELOG.md` naming what was refreshed, retired and kept.
@@ -188,7 +188,7 @@ The governance summary, loaded in every session. Structure:
 7. **Where business logic goes**
 8. **Security enforcement**: the blocking rules, one line each
 9. **Pre-commit checklist**: ordered checks before finishing a change
-10. **Governance workflow**: one line each for `/preflight` (which also scores complexity and says whether to enter plan mode first), `/task-doc`, `/qc` (runs in a read-only subagent and returns a `QC_VERDICT` block; whoever ran it appends that block to the active task doc's `## QC` section), `/qc-fix` (the bounded fix-and-recheck loop), `/close-task`, `/evolve`, `/clauding-thought:report`, where the detailed rules live (`.claude/rules/`, `.claude/patterns/`), and the hooks in force: while a task is active, writes outside its `## <scope heading>` are denied, and so are writes to the governance files under `.claude/` (rules, scripts, settings, manifest, skills, agents) unless the scope lists them; claims about data need a declared data gate; test claims need a passing Bash test run in the turn.
+10. **Governance workflow**: one line each for `/preflight` (which also scores complexity and says whether to enter plan mode first), `/task-doc`, `/qc` (runs in a read-only subagent and returns a `QC_VERDICT` block; whoever ran it appends that block to the active task doc's `## QC` section), `/qc-fix` (diagnoses first, fixes at the root cause, undoes an attempt that did not work, within a per-task budget), `/close-task`, `/evolve`, `/clauding-thought:report`, where the detailed rules live (`.claude/rules/`, `.claude/patterns/`), and the hooks in force: while a task is active, writes outside its `## <scope heading>` are denied, and so are writes to the governance files under `.claude/` (rules, scripts, settings, manifest, skills, agents) unless the scope lists them; claims about data need a declared data gate; test claims need a passing Bash test run in the turn.
 
 Keep it under 200 lines. Detail belongs in the rule files.
 
@@ -238,7 +238,8 @@ The body MUST embed these behavioural rules:
 3. **Check suppressions, not intent.** The only reason to skip a finding is an entry in the active task doc's Suppressions table.
 4. **Convention violations can be errors.** Read the inline `<!-- severity: -->` annotation; do not assume conventions are always warnings.
 5. **Three tiers, one verdict.** Security, architecture, conventions, each with its own section. `manifest.security.posture` decides whether security findings BLOCK (strict) or WARN on baseline gaps (advisory). The verdict is PASS, WARN, or BLOCK.
-6. **Every finding names the file, the line, the rule ID, and the rule section it violates**, so a fix pass can work from the verdict alone.
+6. **Every rule finding names the file, the line, the rule ID, and the rule section it violates**, so a fix pass can work from the verdict alone.
+7. **A failing test is a finding.** Name it `test:<name>` on the `tests:` line with its failure message. It makes the verdict BLOCK unless the Suppressions table lists that `test:<name>`. Report the failure; do not diagnose it.
 
 The `QC_VERDICT` block:
 ```
@@ -249,7 +250,7 @@ QC_VERDICT: PASS | WARN | BLOCK
   architecture: <findings or "none">
   conventions:  <findings or "none">
   suppressed:   <rule IDs skipped via the Suppressions table>
-  tests:        <test command and its result, or "not run">
+  tests:        <test command and its result, with test:<name> and the message for each failure, or "not run">
   files_reviewed: N
 ```
 
@@ -259,13 +260,32 @@ Claude Code also ships `/code-review` and `/security-review`. QC does not replac
 ```yaml
 ---
 name: qc-fix
-description: "Runs /qc, and on WARN or BLOCK applies a targeted fix pass limited to the verdict's findings, then re-runs /qc. At most three cycles; every cycle is appended to the task doc."
-argument-hint: "[--max-cycles N]"
+description: "Runs /qc, diagnoses each BLOCK finding, applies the smallest fix at its root cause, and re-runs /qc. Undoes an attempt that did not work instead of patching on top of it. At most three cycles per task; every cycle is appended to the task doc."
+argument-hint: "[--max-cycles N] [--include-warnings]"
 user-invocable: true
-allowed-tools: ["Read", "Edit", "Write", "Glob", "Grep", "Bash"]
+allowed-tools: ["Read", "Edit", "Write", "Glob", "Grep", "Bash", "Agent"]
 ---
 ```
-The body: run `/qc` and read the verdict. If PASS, append it to the active task doc's `## QC` section and stop. Otherwise, for at most `--max-cycles` cycles (default 3, hard maximum 5; self-correction degrades past a few iterations): launch a fix pass as a subagent whose prompt contains only the verdict, the affected files, and the violated rule sections, with the instruction to change nothing else; then run `/qc` again; append each verdict, with the cycle number and the files changed, to `## QC`. If the verdict is still BLOCK after the last cycle, stop, print the history of the cycles, and say what remains, without softening it.
+A repair loop's failure mode is stacking patches on a symptom until the fix is worse than the finding. The body MUST embed these steps:
+1. **Review.** Run `/qc` and append the verdict to the active task doc's `## QC` section. PASS: stop. WARN: list the findings and stop, because a warning is the user's call; `--include-warnings` treats them like BLOCK findings.
+2. **Diagnose before any edit.** Read each finding against the code and the task's Intent; for a failing test, run that test alone and read the failure. Record one class per finding under `## QC`:
+   - `code`: the code is wrong. Name the root cause's file and line, and say why it causes the finding.
+   - `test`: the test is wrong or outdated, for example it asserts behaviour this task changed on purpose.
+   - `environment`: flaky, caused by the environment, or failing without this task's change.
+   - `rule`: the rule misfires or does not fit this case.
+   Only a `code` finding whose root cause is inside the task's scope goes to a fix pass. Any other finding is handed to the user with its evidence, to fix, suppress with a reason, send to `/evolve`, or extend the scope. When nothing is left to fix, go to step 7.
+3. **Snapshot.** Record the working tree without touching the index or any file, and keep the printed tree id as the cycle's `before`:
+   ```bash
+   T=$(mktemp); cp "$(git rev-parse --git-path index)" "$T"; GIT_INDEX_FILE="$T" git add -A; GIT_INDEX_FILE="$T" git write-tree; rm -f "$T"
+   ```
+4. **Fix pass.** Launch a subagent whose prompt contains the task's Intent, the diagnosis, the findings, the affected files, the violated rule sections, the matching pattern file, and every earlier attempt at these findings with why it failed. Its instructions: make the smallest change at the root cause; prefer changing or removing code to adding it; change nothing else; never weaken, skip or delete a test; report which files each fix changed. If the fix seems to need a new file, class, abstraction, configuration option or dependency, or a special case that only silences the symptom, make no edit and return `NEEDS_DECISION: <what and why>`. On `NEEDS_DECISION`, go to step 7.
+5. **Re-review.** Snapshot again as the cycle's `after`, then run `/qc`. Append to `## QC` the verdict, the cycle number, the diagnosis, both tree ids and `git diff --shortstat <before> <after>`, before the next cycle starts.
+6. **Judge the attempt.** PASS: stop.
+   - A finding that was not in the previous verdict, in a file the fix changed, means the attempt made things worse: undo it and go to step 7.
+   - A finding that survived means the attempt did not work: undo it, diagnose again, and try once more with the failed attempt in the prompt. If it survives the second attempt, undo that too and go to step 7, because the diagnosis is what is wrong.
+   - Otherwise continue from step 2 with what remains.
+   To undo, take the files the attempt changed from `git diff --name-status --no-renames <before> <after>`: delete each one marked `A`, and run `git restore --source=<before> --worktree -- <file>` for the rest. Undoing a shared file also undoes any other fix in it, so that fix is tried again. The `after` tree id stays in the task doc, so the attempt can be recovered until git prunes it. After any undo, run `/qc` once more so the last verdict describes the code on disk.
+7. **Stop and report.** Print each cycle (findings, diagnosis, files, diff size, undone or kept) and say what remains and what the user must decide, without softening it, naming the task doc's file. The budget is `--max-cycles` per task, default 3 and hard maximum 5, counted from the cycles already in `## QC`, so running `/qc-fix` again continues the count instead of resetting it. An undone attempt counts. Reaching the budget also leads here.
 
 **`evolve`** — re-analysis and rule maintenance. Frontmatter:
 ```yaml

@@ -15,7 +15,7 @@ Claude Code ships rules (`.claude/rules/` with `paths:` scoping), auto-memory, s
 | `/init` writes a generic CLAUDE.md | Deep analysis into a manifest: tenancy, auth, boundaries, conventions, archetypes, verification gates |
 | Rules are hand-written | Rule files hydrated from the codebase, with `paths:` frontmatter so they load only when relevant |
 | No notion of "how a handler looks here" | One pattern file per archetype, canonical example copied from the project |
-| Review is generic | `/qc` checks the project's own declared rules in a read-only subagent, with severity tiers and a suppressions table; `/qc-fix` runs a bounded fix-and-recheck loop |
+| Review is generic | `/qc` checks the project's own declared rules in a read-only subagent, with severity tiers and a suppressions table; `/qc-fix` diagnoses first, fixes at the root cause, and undoes an attempt that did not work |
 | Nothing routes a big change into plan mode | `/preflight` scores complexity from the files a task will touch and sends medium and high tasks into plan mode before any edit |
 | Nothing stops a task from quietly touching files it never declared | `scope-guard` denies writes outside the active task's declared scope |
 | No real-time secret or destructive-command guard on writes and shell | `secret-filter` and `destructive-guard` |
@@ -47,7 +47,7 @@ Then in the project:
 /task-doc "Add invoice export"         # start the task document (with its scope section)
 # ... plan first if preflight said so, then write code ...
 /qc                                    # review changes against the project's rules (read-only subagent)
-/qc-fix                                # or: review, fix only what the verdict names, re-review, max 3 cycles
+/qc-fix                                # or: review, diagnose, fix at the root cause, re-review, undo what failed, max 3 cycles per task
 /close-task                            # demonstrate the thesis via /verify, record lessons, refuse on BLOCK
 /evolve                                # periodically: read telemetry, re-analyze, update rules, keep them scoped
 /clauding-thought:report               # what the governance layer is actually doing
@@ -162,6 +162,10 @@ clauding-thought/
 ├── packs/                 rule packs
 └── schema/                manifest schema
 ```
+
+## Changes in 3.4.2
+
+`/qc-fix` could stack patches on a symptom: its fix pass saw only the verdict, could not undo an earlier attempt, and left every attempt in the code when the cycles ran out. Now every finding is diagnosed before any edit, and only a code fault inside the task's scope gets an automatic fix; a wrong test, a flaky or environmental failure, or a misfiring rule goes to the user with its evidence. A fix pass gets the task's intent and earlier attempts, makes the smallest change at the root cause, and returns `NEEDS_DECISION` rather than add a new file, abstraction, option, dependency or symptom-only special case. Each cycle is snapshotted, so an attempt that survives or causes new findings is undone; a finding that survives two attempts stops the loop. The budget is per task, so running `/qc-fix` again no longer resets it, and WARN is reported instead of auto-fixed unless `--include-warnings` is passed. `/qc` now reports a failing test as a BLOCK finding named `test:<name>`, which the Suppressions table can list. `--update` flags `qc` and `qc-fix` skills that predate this, because generated skills are not copied into projects.
 
 ## Changes in 3.4.1
 

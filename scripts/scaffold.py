@@ -431,7 +431,9 @@ try:
         "evolve_reads_telemetry": skill_text_mentions(claude_dir, "evolve", "report_data.py"),
         "preflight_scores": skill_text_mentions(claude_dir, "preflight", "complexity.py"),
         "qc_forked": skill_text_mentions(claude_dir, "qc", "context: fork"),
+        "qc_reports_test_failures": skill_text_mentions(claude_dir, "qc", "test:<name>"),
         "qc_fix_present": os.path.isfile(os.path.join(claude_dir, "skills", "qc-fix", "SKILL.md")),
+        "qc_fix_diagnoses": skill_text_mentions(claude_dir, "qc-fix", "NEEDS_DECISION"),
         "qc_reviewer_present": os.path.isfile(os.path.join(claude_dir, "agents", "qc-reviewer.md")),
     }
 
@@ -484,8 +486,12 @@ try:
             steps.append("Regenerate skills/preflight/SKILL.md so it runs complexity.py and routes by tier; keep customisations")
         if skill_state["qc_forked"] is False:
             steps.append("Regenerate skills/qc/SKILL.md: context: fork, agent: qc-reviewer, background: false, gathers its own diff, returns only QC_VERDICT")
+        if skill_state["qc_reports_test_failures"] is False:
+            steps.append("Update skills/qc/SKILL.md: a failing test is a BLOCK finding named test:<name> unless suppressed; keep customisations")
         if not skill_state["qc_fix_present"]:
-            steps.append("Generate skills/qc-fix/SKILL.md (bounded fix-and-recheck loop)")
+            steps.append("Generate skills/qc-fix/SKILL.md (diagnose-first repair loop that undoes failed attempts)")
+        elif skill_state["qc_fix_diagnoses"] is False:
+            steps.append("Regenerate skills/qc-fix/SKILL.md: diagnose before any edit, snapshot each cycle, NEEDS_DECISION, undo failed attempts, per-task budget; keep the project's checks and headings")
         if not skill_state["qc_reviewer_present"]:
             steps.append("Generate agents/qc-reviewer.md (read-only reviewer subagent)")
         if left_alone:

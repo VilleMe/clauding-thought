@@ -199,6 +199,30 @@ check(r["status"] == "success" and st.get("status") == "pass",
 check(not os.path.isfile(d + "/.gitignore"), "no gitignore created in a folder that is not a git repo")
 
 # ---------------------------------------------------------------------------
+scenario("6. an update flags qc and qc-fix skills that predate the repair-loop rules")
+d = fresh()
+write(d + "/.claude/manifest.json", '{"version": "1.1", "governance": {}}')
+write(d + "/.claude/skills/qc/SKILL.md", "---\nname: qc\ncontext: fork\n---\nold review\n")
+write(d + "/.claude/skills/qc-fix/SKILL.md", "---\nname: qc-fix\n---\nold fix loop\n")
+r = scaffold(d, "--update")
+steps = " ".join(r.get("next_steps", []))
+check(r.get("skill_state", {}).get("qc_fix_diagnoses") is False and "Regenerate skills/qc-fix/SKILL.md" in steps,
+      "a qc-fix without the diagnosis steps is flagged for regeneration")
+check(r.get("skill_state", {}).get("qc_reports_test_failures") is False and "Update skills/qc/SKILL.md" in steps,
+      "a qc without test findings is flagged for update")
+check(read(d + "/.claude/skills/qc-fix/SKILL.md").endswith("old fix loop\n"), "the update reports it and leaves the skill file alone")
+
+write(d + "/.claude/skills/qc/SKILL.md", "---\nname: qc\ncontext: fork\n---\nName it test:<name> on the tests line.\n")
+write(d + "/.claude/skills/qc-fix/SKILL.md", "---\nname: qc-fix\n---\nreturn NEEDS_DECISION: why\n")
+r = scaffold(d, "--update")
+steps = " ".join(r.get("next_steps", []))
+check("skills/qc-fix/SKILL.md" not in steps and "skills/qc/SKILL.md" not in steps, "current skills are not flagged")
+
+os.remove(d + "/.claude/skills/qc-fix/SKILL.md")
+r = scaffold(d, "--update")
+check("Generate skills/qc-fix/SKILL.md" in " ".join(r.get("next_steps", [])), "a missing qc-fix is generated, not regenerated")
+
+# ---------------------------------------------------------------------------
 for t in tempdirs:
     shutil.rmtree(t, ignore_errors=True)
 bad = [label for ok, label in results if not ok]

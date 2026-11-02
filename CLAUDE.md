@@ -15,7 +15,7 @@ Clauding Thought is a Claude Code plugin that generates a project-specific `.cla
 - `packs/` — reusable rule packs (plain Markdown plus `pack.json`)
 - `schema/manifest.schema.json` — the manifest schema; the init skill reads it from the plugin root
 
-The plugin ships no SessionStart hook and copies no skills into projects. Generated skills (preflight, qc, qc-fix, evolve, task-doc, close-task) and the `qc-reviewer` subagent are written per project by the init skill. `qc` runs with `context: fork` in that subagent; `qc-fix` orchestrates from the main conversation. Project skills cannot reach `${CLAUDE_PLUGIN_ROOT}`, so any script a generated skill calls must be in the scaffold's copy list.
+The plugin ships no SessionStart hook and copies no skills into projects. Generated skills (preflight, qc, qc-fix, evolve, task-doc, close-task) and the `qc-reviewer` subagent are written per project by the init skill. `qc` runs with `context: fork` in that subagent; `qc-fix` orchestrates from the main conversation: it diagnoses before any edit, snapshots each cycle, and undoes an attempt that did not work instead of patching on top of it. Project skills cannot reach `${CLAUDE_PLUGIN_ROOT}`, so any script a generated skill calls must be in the scaffold's copy list.
 
 ## Conventions
 
